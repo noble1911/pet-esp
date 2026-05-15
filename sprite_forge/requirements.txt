@@ -1,0 +1,2 @@
+# Laptop-side sprite tool only — never installed on device.
+Pillow>=10.0

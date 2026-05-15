@@ -1,0 +1,3 @@
+# Source part PNGs go here: {stage}/{layer}/{shape}/{animation}.png
+# plus an anchors.json per shape. See ../README.md and
+# ../../docs/sprite_format.md.

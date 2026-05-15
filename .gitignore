@@ -1,0 +1,26 @@
+# PlatformIO build output
+.pio/
+firmware/.pio/
+
+# ESP-IDF generated config / build
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/dependencies.lock
+managed_components/
+
+# Built sprite assets — produced by sprite_forge (architecture §8, §9)
+firmware/assets/*.bin
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+*~
