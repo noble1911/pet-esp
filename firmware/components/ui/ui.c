@@ -1,6 +1,9 @@
-// ui implementation — build-order step 6: "now it's a pet". Stat bars at
-// the top, pet placeholder in the middle, four care buttons at the bottom.
-// Touch the buttons to restore the matching need; bars update immediately.
+// ui implementation — polish-gate Track L (layout overhaul). Chrome shrinks
+// to a thin stat strip on top + an action dock on the bottom; the scene
+// between them dominates the screen. Background is the day palette
+// (docs/design.md §2): cream wall + wood floor with the pet standing on
+// the floor line. Real scene art swaps in via Track S; this file ships
+// placeholder coloured rectangles so the geometry is testable today.
 
 #include "ui.h"
 #include "renderer.h"
@@ -10,33 +13,52 @@
 
 static const char *TAG = "ui";
 
-// Pixel-art aesthetic (polish-gate D): sharp corners, thin solid borders.
-// Defined up front so any of the modal/picker helpers below can reuse them.
-#define UI_FRAME_COLOR    0x4a5566      // muted slate — borders + bar bg
-#define UI_BG_COLOR       0x101820      // screen background
-#define UI_FG_COLOR       0xe5e5e5      // text on dark
-#define UI_BTN_BG         0x202830      // care-button face
-#define UI_BTN_BG_PRESSED 0x303a45      // pressed feedback
+// --- Day palette (docs/design.md §2) ----------------------------------
+// All hex are 0xRRGGBB. Night palette lives separately for later use.
+#define UI_BG_CREAM       0xfdf6e3   // wall / lit background
+#define UI_PEACH          0xf9c8a6   // accents
+#define UI_PINK           0xf4a7b9   // pressed-state / accents
+#define UI_WOOD           0xb67c52   // floor base
+#define UI_WOOD_DARK      0x7a4f30   // floor edge + borders + frame
+#define UI_TEXT_DARK      0x3a2f24   // text on cream
 
-// Stat bar handles — index matches need_t order below.
+// Geometry — see docs/design.md §4. All in pixels.
+//
+// AMOLED has rounded screen corners; UI elements keep a ~24 px safe-area
+// inset from each edge so nothing clips into the corner arc.
+//
+// PET_Y / FOOD_DROP_Y account for LVGL's centre-pivot scaling: an image
+// scaled 2x has its rendered content extending 32 px upward (and 32 px
+// downward) from the LVGL object's box. So "position the visual at Y"
+// is really "position the object at Y + 32", roughly. We add the source
+// PNG's top padding on top of that. Concrete sums in the constants below.
+#define STAT_STRIP_H      40
+#define ACTION_DOCK_H     64
+#define SCREEN_W          368
+#define SCREEN_H          448
+#define SAFE_INSET        24          // rounded-corner mask margin
+#define FLOOR_TOP_Y       280         // floor band begins (in scene area)
+#define SCENE_TOP_Y       STAT_STRIP_H
+#define SCENE_BOTTOM_Y    (SCREEN_H - ACTION_DOCK_H)
+#define PET_X             120
+// PET_Y = 210 puts the pet's visual feet (which sit at object_y + 86
+// after centre-pivot scaling and the body PNG's 5 px bottom padding) at
+// y = 296 — 16 px below the floor surface, clearly grounded.
+#define PET_Y             210
+
+// --- Stat bar handles -------------------------------------------------
 enum { NEED_HUNGER, NEED_HAPPINESS, NEED_ENERGY, NEED_HYGIENE, NEED_COUNT };
 static lv_obj_t *s_bars[NEED_COUNT];
 
-// Bar styling — distinct hues per need so all four stay readable at a glance.
 static const uint32_t s_bar_colors[NEED_COUNT] = {
     0xff8a40,  // hunger — warm orange (food)
-    0xffd166,  // happiness — yellow
+    0xff5c8a,  // happiness — pink-red (heart)
     0x4a9aff,  // energy — blue
     0x66d9c2,  // hygiene — cyan
 };
-static const char *s_bar_labels[NEED_COUNT] = {
-    "Hunger", "Happiness", "Energy", "Hygiene"
-};
 
-// Sleep view — overlay + animated "Zzz" floating above the pet for a few
-// seconds after Rest is pressed. Pure UI state; pet_state still ticks
-// normally underneath. Body sprite keeps its idle bob, which reads as a
-// sleeping creature breathing.
+// --- Sleep view -------------------------------------------------------
+// Translucent dim + animated "Z z z" over the scene area when Rest fires.
 #define SLEEP_VIEW_MS 6000
 
 static lv_obj_t   *s_sleep_overlay;
@@ -57,35 +79,32 @@ static void sleep_end_cb(lv_timer_t *t) { (void)t; sleep_view_clear(); }
 
 static void sleep_view_enter(void)
 {
-    if (s_sleep_overlay) {           // already sleeping → restart the timer
-        if (s_sleep_end_timer) {
-            lv_timer_reset(s_sleep_end_timer);
-        }
+    if (s_sleep_overlay) {
+        if (s_sleep_end_timer) lv_timer_reset(s_sleep_end_timer);
         return;
     }
     lv_obj_t *scr = lv_screen_active();
 
-    // Translucent dim over the pet area only (keeps bars + buttons clear).
     s_sleep_overlay = lv_obj_create(scr);
-    lv_obj_set_size(s_sleep_overlay, 368, 240);
-    lv_obj_set_pos(s_sleep_overlay, 0, 100);
-    lv_obj_set_style_bg_color(s_sleep_overlay, lv_color_hex(0x000020), 0);
-    lv_obj_set_style_bg_opa(s_sleep_overlay, LV_OPA_60, 0);
+    lv_obj_set_size(s_sleep_overlay, SCREEN_W,
+                    SCENE_BOTTOM_Y - SCENE_TOP_Y);
+    lv_obj_set_pos(s_sleep_overlay, 0, SCENE_TOP_Y);
+    lv_obj_set_style_bg_color(s_sleep_overlay, lv_color_hex(0x1f2347), 0);
+    lv_obj_set_style_bg_opa(s_sleep_overlay, LV_OPA_70, 0);
     lv_obj_set_style_border_width(s_sleep_overlay, 0, 0);
     lv_obj_set_style_radius(s_sleep_overlay, 0, 0);
     lv_obj_remove_flag(s_sleep_overlay, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Floating "Z z z" label, animated upward + repeated.
     s_sleep_zzz = lv_label_create(scr);
     lv_label_set_text(s_sleep_zzz, "Z z z");
     lv_obj_set_style_text_color(s_sleep_zzz, lv_color_hex(0xa0c8ff), 0);
     lv_obj_set_style_text_font(s_sleep_zzz, &lv_font_unscii_16, 0);
-    lv_obj_set_pos(s_sleep_zzz, 200, 150);
+    lv_obj_set_pos(s_sleep_zzz, 200, 100);
 
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, s_sleep_zzz);
-    lv_anim_set_values(&a, 150, 110);            // float up 40 px
+    lv_anim_set_values(&a, 100, 60);
     lv_anim_set_duration(&a, 1500);
     lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
     lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_y);
@@ -95,12 +114,15 @@ static void sleep_view_enter(void)
     lv_timer_set_repeat_count(s_sleep_end_timer, 1);
 }
 
-// Food picker view (polish-gate C-Feed). Feed press opens a 5-item modal;
-// picking an item drops the food sprite near the pet's mouth for ~1.5 s,
-// then it vanishes and pet_state_feed() restores hunger. Until step 5's
-// body has an `eat` animation strip, the pet keeps its idle bob while the
-// food is on screen — reads as "looking at" the food, not unrealistic.
+// --- Food picker (polish-gate C-Feed) ---------------------------------
 #define FOOD_EAT_MS 1500
+// Food drop position — accounts for centre-pivot scaling (32-px source
+// scaled 2× has rendered content extending 16 px upward from the LVGL
+// object). FOOD_DROP_Y = 268 puts food's visual content (y_top = 260,
+// y_bottom = 310 after 2x scale + 4/3 px PNG padding) clearly sitting on
+// the floor — top ~20 px above the surface, bottom ~30 px into the wood.
+#define FOOD_DROP_X 152
+#define FOOD_DROP_Y 268
 
 static lv_obj_t   *s_food_modal;
 static lv_obj_t   *s_food_dropped;
@@ -132,14 +154,11 @@ static void food_picked_cb(lv_event_t *e)
     if (s_food_modal) { lv_obj_del(s_food_modal); s_food_modal = NULL; }
     food_cleanup_dropped();
 
-    // Drop the picked food sprite just to the left of the pet's mouth.
-    // Pet is at (120, 130), 64-pixel canvas scaled 2x => 128x128 footprint.
-    // Source is 32x32; scale 2x to read at the same chunky pixel size.
     s_food_dropped = lv_image_create(lv_screen_active());
     lv_image_set_src(s_food_dropped, food_items[idx].img);
     lv_image_set_antialias(s_food_dropped, false);
-    lv_image_set_scale(s_food_dropped, 256 * 2);   // 32 -> 64 px
-    lv_obj_set_pos(s_food_dropped, 152, 200);
+    lv_image_set_scale(s_food_dropped, 256 * 2);
+    lv_obj_set_pos(s_food_dropped, FOOD_DROP_X, FOOD_DROP_Y);
 
     s_food_eat_timer = lv_timer_create(food_eat_complete_cb, FOOD_EAT_MS, NULL);
     lv_timer_set_repeat_count(s_food_eat_timer, 1);
@@ -147,7 +166,6 @@ static void food_picked_cb(lv_event_t *e)
 
 static void food_modal_dismiss_cb(lv_event_t *e)
 {
-    // Only fire on clicks on the backdrop itself, not bubbled from buttons.
     if (lv_event_get_target(e) != s_food_modal) return;
     if (s_food_modal) { lv_obj_del(s_food_modal); s_food_modal = NULL; }
 }
@@ -158,7 +176,7 @@ static void food_picker_show(void)
     lv_obj_t *scr = lv_screen_active();
 
     s_food_modal = lv_obj_create(scr);
-    lv_obj_set_size(s_food_modal, 368, 448);
+    lv_obj_set_size(s_food_modal, SCREEN_W, SCREEN_H);
     lv_obj_set_pos(s_food_modal, 0, 0);
     lv_obj_set_style_bg_color(s_food_modal, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(s_food_modal, LV_OPA_70, 0);
@@ -169,24 +187,23 @@ static void food_picker_show(void)
     lv_obj_add_event_cb(s_food_modal, food_modal_dismiss_cb,
                         LV_EVENT_CLICKED, NULL);
 
-    // 5 items × 64 px + 4 × 8 gutter = 352; centered in 368 starting x=8.
     for (int i = 0; i < FOOD_ITEM_COUNT; i++) {
         lv_obj_t *btn = lv_button_create(s_food_modal);
         lv_obj_set_size(btn, 64, 64);
         lv_obj_set_pos(btn, 8 + i * 72, 180);
         lv_obj_set_style_radius(btn, 0, 0);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(UI_BTN_BG), 0);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(UI_BTN_BG_PRESSED),
+        lv_obj_set_style_bg_color(btn, lv_color_hex(UI_BG_CREAM), 0);
+        lv_obj_set_style_bg_color(btn, lv_color_hex(UI_PINK),
                                   LV_STATE_PRESSED);
         lv_obj_set_style_border_width(btn, 2, 0);
-        lv_obj_set_style_border_color(btn, lv_color_hex(UI_FRAME_COLOR), 0);
+        lv_obj_set_style_border_color(btn, lv_color_hex(UI_WOOD_DARK), 0);
         lv_obj_set_style_pad_all(btn, 0, 0);
         lv_obj_set_style_shadow_width(btn, 0, 0);
 
         lv_obj_t *img = lv_image_create(btn);
         lv_image_set_src(img, food_items[i].img);
         lv_image_set_antialias(img, false);
-        lv_image_set_scale(img, 256 * 2);          // 32 -> 64
+        lv_image_set_scale(img, 256 * 2);
         lv_obj_center(img);
 
         lv_obj_add_event_cb(btn, food_picked_cb, LV_EVENT_CLICKED,
@@ -194,59 +211,109 @@ static void food_picker_show(void)
     }
 }
 
-// Care action callbacks. Each restores its need (or opens the food picker
-// for Feed) and immediately refreshes the bars. Rest also flips on the
-// sleep overlay.
+// --- Care action callbacks --------------------------------------------
 static void on_feed_cb(lv_event_t *e)  { (void)e; food_picker_show(); }
 static void on_play_cb(lv_event_t *e)  { (void)e; pet_state_play();  renderer_pet_react(REACT_WIGGLE); ui_refresh_stats(); }
 static void on_rest_cb(lv_event_t *e)  { (void)e; pet_state_rest();  sleep_view_enter(); ui_refresh_stats(); }
 static void on_clean_cb(lv_event_t *e) { (void)e; pet_state_clean(); renderer_pet_react(REACT_SHAKE); ui_refresh_stats(); }
 
-static lv_obj_t *make_stat_bar(lv_obj_t *parent, const char *name,
-                               int y, uint32_t color)
+// --- Scene background placeholders ------------------------------------
+// Real scene art (home.png) replaces these via Track S. For now they
+// communicate the geometry: cream wall, wood floor, a 1-px wood-dark
+// floor-line so the pet visibly "stands on" something.
+static void make_scene_placeholder(lv_obj_t *scr)
 {
-    lv_obj_t *label = lv_label_create(parent);
-    lv_label_set_text(label, name);
-    lv_obj_set_style_text_color(label, lv_color_hex(UI_FG_COLOR), 0);
-    lv_obj_set_pos(label, 8, y);
+    // Wall = scr's bg (cream). Add the floor strip.
+    lv_obj_t *floor = lv_obj_create(scr);
+    lv_obj_set_size(floor, SCREEN_W, SCENE_BOTTOM_Y - FLOOR_TOP_Y);
+    lv_obj_set_pos(floor, 0, FLOOR_TOP_Y);
+    lv_obj_set_style_bg_color(floor, lv_color_hex(UI_WOOD), 0);
+    lv_obj_set_style_border_side(floor, LV_BORDER_SIDE_TOP, 0);
+    lv_obj_set_style_border_width(floor, 2, 0);
+    lv_obj_set_style_border_color(floor, lv_color_hex(UI_WOOD_DARK), 0);
+    lv_obj_set_style_radius(floor, 0, 0);
+    lv_obj_set_style_pad_all(floor, 0, 0);
+    lv_obj_remove_flag(floor, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+}
+
+// --- Stat strip -------------------------------------------------------
+// Each indicator stacks a 16×16 colour-coded square (icon placeholder)
+// over a 52×6 mini-bar so the bar gets nearly the full slot width.
+// Reads more like the Tamagotchi-Uni dot indicators than the cramped
+// icon-beside-bar first draft.
+//
+// Layout: 4 indicators × 60 px wide + 3 × 12 px gutter = 276; start at
+//         x = 16 (gives 16 px left margin, then ends at x = 292). The
+//         gear sits at x = 316 — 28 px right margin to clear the
+//         rounded-corner mask, 24 px gap to the last bar.
+static lv_obj_t *make_stat_indicator(lv_obj_t *parent, int x, uint32_t color)
+{
+    // Indicator slot is 60 px wide. Icon 16 px centred at x+22 over a
+    // 52 px bar centred at x+4. Vertically: icon top y=4, bar top y=24.
+    lv_obj_t *icon = lv_obj_create(parent);
+    lv_obj_set_size(icon, 16, 16);
+    lv_obj_set_pos(icon, x + 22, 4);
+    lv_obj_set_style_bg_color(icon, lv_color_hex(color), 0);
+    lv_obj_set_style_border_width(icon, 1, 0);
+    lv_obj_set_style_border_color(icon, lv_color_hex(UI_WOOD_DARK), 0);
+    lv_obj_set_style_radius(icon, 0, 0);
+    lv_obj_set_style_pad_all(icon, 0, 0);
+    lv_obj_remove_flag(icon, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *bar = lv_bar_create(parent);
     lv_bar_set_range(bar, 0, 100);
-    lv_obj_set_size(bar, 220, 14);
-    lv_obj_set_pos(bar, 120, y + 4);
-    // Sharp rectangle main + indicator; 1 px slate border around the bar.
+    lv_obj_set_size(bar, 52, 8);
+    lv_obj_set_pos(bar, x + 4, 24);
     lv_obj_set_style_radius(bar, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(bar, 0, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(bar, lv_color_hex(0x303744), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(bar, lv_color_hex(UI_WOOD), LV_PART_MAIN);
     lv_obj_set_style_bg_color(bar, lv_color_hex(color), LV_PART_INDICATOR);
     lv_obj_set_style_border_width(bar, 1, LV_PART_MAIN);
-    lv_obj_set_style_border_color(bar, lv_color_hex(UI_FRAME_COLOR),
+    lv_obj_set_style_border_color(bar, lv_color_hex(UI_WOOD_DARK),
                                   LV_PART_MAIN);
     return bar;
 }
 
+static void make_gear(lv_obj_t *parent)
+{
+    // Placeholder for the menu gear (Track M). Position pulls inward from
+    // the right + top edges so the rounded-corner mask doesn't crop it.
+    // Tap-target is in place so geometry is correct; icon swap = one
+    // line later.
+    lv_obj_t *gear = lv_obj_create(parent);
+    lv_obj_set_size(gear, 24, 24);
+    lv_obj_set_pos(gear, 316, 8);     // 28 px right inset, 8 px top inset
+    lv_obj_set_style_bg_color(gear, lv_color_hex(UI_PEACH), 0);
+    lv_obj_set_style_border_width(gear, 1, 0);
+    lv_obj_set_style_border_color(gear, lv_color_hex(UI_WOOD_DARK), 0);
+    lv_obj_set_style_radius(gear, 0, 0);
+    lv_obj_set_style_pad_all(gear, 0, 0);
+    lv_obj_remove_flag(gear, LV_OBJ_FLAG_SCROLLABLE);
+    // TODO(Track M): add CLICKABLE + event handler when menu modal lands.
+}
+
+// --- Care button (action dock) ----------------------------------------
 static void make_care_button(lv_obj_t *parent, const char *text,
                              int x, int y, lv_event_cb_t cb)
 {
     lv_obj_t *btn = lv_button_create(parent);
-    lv_obj_set_size(btn, 80, 70);
+    lv_obj_set_size(btn, 72, 56);
     lv_obj_set_pos(btn, x, y);
-    // Pixel-art button: sharp corners, 2 px slate border, dark face with
-    // a slightly lighter pressed state for tactile feedback.
     lv_obj_set_style_radius(btn, 0, 0);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(UI_BTN_BG), 0);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(UI_BTN_BG_PRESSED),
+    lv_obj_set_style_bg_color(btn, lv_color_hex(UI_BG_CREAM), 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(UI_PINK),
                               LV_STATE_PRESSED);
     lv_obj_set_style_border_width(btn, 2, 0);
-    lv_obj_set_style_border_color(btn, lv_color_hex(UI_FRAME_COLOR), 0);
+    lv_obj_set_style_border_color(btn, lv_color_hex(UI_WOOD_DARK), 0);
     lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, text);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(UI_FG_COLOR), 0);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(UI_TEXT_DARK), 0);
     lv_obj_center(lbl);
     lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
 }
 
+// --- Entry point ------------------------------------------------------
 void ui_init(void)
 {
     if (!renderer_lock(0)) {
@@ -255,28 +322,39 @@ void ui_init(void)
     }
 
     lv_obj_t *scr = lv_screen_active();
-    lv_obj_set_style_bg_color(scr, lv_color_hex(UI_BG_COLOR), 0);
+    lv_obj_set_style_bg_color(scr, lv_color_hex(UI_BG_CREAM), 0);
 
-    // Stat bars — 4 rows of (label + bar), top 92px of the screen.
+    // Scene background (wall = scr cream + wood floor band).
+    make_scene_placeholder(scr);
+
+    // Stat strip (top). 4 indicators × 60 px + 3 × 12 px gutter = 276;
+    // starts at x = 16, ends at x = 292. Gear (24 px) at x = 316 with
+    // 28 px right margin from the rounded corner.
+    static const int STAT_START_X = 16;
+    static const int STAT_STRIDE  = 72;
     for (int i = 0; i < NEED_COUNT; i++) {
-        s_bars[i] = make_stat_bar(scr, s_bar_labels[i],
-                                  4 + i * 22, s_bar_colors[i]);
+        s_bars[i] = make_stat_indicator(
+            scr, STAT_START_X + i * STAT_STRIDE, s_bar_colors[i]);
     }
+    make_gear(scr);
 
-    // Pet placeholder — slightly higher than step 3 to make room for the
-    // bars; still horizontally centered on the 368-wide AMOLED.
-    renderer_draw_pet(pet_state_get(), 120, 130);
+    // Pet — sits in front of the floor band so its lower body overlaps
+    // the wood, giving a grounded look. Renderer captures (PET_X, PET_Y)
+    // as the base for breathing + reaction animations.
+    renderer_draw_pet(pet_state_get(), PET_X, PET_Y);
 
-    // Care buttons — bottom row, ~80x70 each, 8px gutter; total width
-    // (4*80 + 3*8) = 344, centered in 368 by starting at x=12.
-    make_care_button(scr, "Feed",  12,  368, on_feed_cb);
-    make_care_button(scr, "Play",  100, 368, on_play_cb);
-    make_care_button(scr, "Rest",  188, 368, on_rest_cb);
-    make_care_button(scr, "Clean", 276, 368, on_clean_cb);
+    // Action dock (bottom). 4 buttons × 72 px + 3 × 8 px gutter = 312;
+    // starts at x = 28 → ends at x = 340. Keeps 28 px margin both sides
+    // so the rounded corners don't clip the outermost buttons.
+    static const int DOCK_Y = SCREEN_H - ACTION_DOCK_H + 4;
+    make_care_button(scr, "Feed",  28,  DOCK_Y, on_feed_cb);
+    make_care_button(scr, "Play",  108, DOCK_Y, on_play_cb);
+    make_care_button(scr, "Rest",  188, DOCK_Y, on_rest_cb);
+    make_care_button(scr, "Clean", 268, DOCK_Y, on_clean_cb);
 
     renderer_unlock();
     ui_refresh_stats();
-    ESP_LOGI(TAG, "stat bars + care buttons up (build-order:6)");
+    ESP_LOGI(TAG, "Track L layout up (stat strip + scene + action dock)");
 }
 
 void ui_refresh_stats(void)
@@ -293,8 +371,8 @@ void ui_refresh_stats(void)
 
 void ui_show_home(void)
 {
-    // TODO(build-order:6+): split current home screen into reusable screens
-    //                       once menus / settings need to coexist.
+    // TODO(Track M): split current home screen into reusable screens
+    //                once the gear menu modal needs separate views.
 }
 
 void ui_show_emote(emote_id_t emote)
