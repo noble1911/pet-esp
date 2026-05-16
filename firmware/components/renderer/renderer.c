@@ -41,7 +41,11 @@ bool renderer_load_pet_sprites(const Pet *pet)
 
 void renderer_draw_pet(const Pet *pet, int x, int y)
 {
-    (void)pet; (void)x; (void)y;
-    // TODO(build-order:3): placeholder circle.
-    // TODO(build-order:5): real back-to-front tinted layer stack.
+    (void)pet;  // genes/colors/animations honored at step 5
+    lv_obj_t *body = lv_obj_create(lv_screen_active());
+    lv_obj_set_size(body, 128, 128);
+    lv_obj_set_pos(body, x, y);
+    lv_obj_set_style_radius(body, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(body, lv_color_hex(0xf5d76e), 0);
+    lv_obj_set_style_border_width(body, 0, 0);
 }

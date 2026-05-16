@@ -57,7 +57,9 @@ void renderer_unlock(void);
 // TODO(build-order:5): load a stage's sprite library from SD into PSRAM.
 bool renderer_load_pet_sprites(const Pet *pet);
 
-// TODO(build-order:3/5): compose the layered, gene-tinted pet on screen.
+// Draw the pet at (x, y). Step 3 is a placeholder circle that ignores
+// `pet`; step 5 will compose layered, gene-tinted sprites from the same
+// call site. Caller must hold renderer_lock().
 void renderer_draw_pet(const Pet *pet, int x, int y);
 
 #ifdef __cplusplus
