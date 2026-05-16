@@ -414,6 +414,32 @@ Each step ends with a working, demoable artifact. Do not skip ahead.
 5. **Real renderer.** Layered sprite composition with tinting, loading from the flash LittleFS `assets` partition (SD deferred to the extended library — §2). Placeholder art OK.
 6. **UI loop.** Stat bars, feed button, basic menus, touch input. Now it's a pet.
 7. **Evolution.** Sprites change at life-stage transitions.
+
+**Polish gate — the single-device pet must feel like a toy before networking begins.**
+
+This is a basket of small tracks, not a numbered step — items can land in any
+order after step 6. Step 8 (and everything after it) is on hold until the
+single-device experience reads as a toy rather than a tech demo. Concretely:
+
+- **Move.** Sprite animation cycles at ~5 fps (§5.5); idle frames loop, eye
+  blink fires every few seconds, and care actions briefly switch the body to
+  `eat` / `play` / `sleep` / `clean` states. The pet visibly breathes or
+  drifts within its area, never holds a static frame.
+- **Vary.** Fresh hatches get random genes within their valid ranges; palettes
+  have multiple meaningful entries. Two devices' default pets should be
+  unmistakably different at first glance.
+- **Care visibly.** Each care action plays a short audio cue from the ES8311
+  codec in addition to the transient animation state. Resolves the §11 sound
+  design question by forcing a concrete choice (synth vs. sampled).
+- **Look like a toy.** Pixel-art bitmap font replaces Montserrat; stat bars
+  are styled (rounded ends, restore-fill animation); care buttons carry icons
+  instead of text labels; the background is a scene with a floor rather than
+  flat navy.
+- **Art coverage.** Multiple body / eye / mouth / ear / pattern / accessory
+  shapes per layer (`gene_spec.md` allows 8 per layer + 16 palette entries).
+  Without this, gene variation has nothing to express no matter how good the
+  renderer is.
+
 8. **ESP-NOW discovery.** Two devices detect each other and play a 👋 animation. Make-or-break milestone.
 9. **Shared canvas, no interaction.** Two devices show one pet walking across both screens. Position sync working.
 10. **Emote system.** Tap emotes; both screens render bubbles; reactions fire.
