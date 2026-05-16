@@ -176,11 +176,19 @@ menu. Same glyph means the same thing everywhere.
 
 - [Kenney Game Icons](https://kenney.nl/assets/category:Icons) — first
   port of call for placeholder glyphs. CC0 means no attribution needed.
+- [Kenney Emotes Pack](https://kenney.nl/assets/emotes) — already in
+  `sprite_forge/emotes/kenney_emotes-pack/`; supplies heart / sleep /
+  drop and the architecture §7.4 emote vocabulary.
 - [game-icons.net](https://game-icons.net/) — larger library, varied
   licences (most CC-BY).
 
-Final icons may be hand-drawn to match the art track's pixel style;
-Kenney/game-icons fills the gap until then.
+**In-session pixel-art tooling**: a **Piskel MCP** is available
+(`mcp__piskel__*`) for drawing new pixel art directly in the session
+when the existing free packs don't fit. Gimp MCP (`mcp__gimp-mcp__*`)
+is the fallback for raster operations Piskel doesn't do natively
+(blur, larger compositions). Generated art lands in `sprite_forge/`
+under the appropriate sub-tree and is converted to embedded C by the
+matching `sprite_forge/*_to_c.py` script (or a new one if needed).
 
 ---
 
