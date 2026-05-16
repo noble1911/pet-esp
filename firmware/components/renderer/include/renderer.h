@@ -68,6 +68,14 @@ typedef struct {
     sprite_anchors_t anchors;           // from the body shape
 } pet_sprites_t;
 
+// Gene-indexed tint table (architecture §5.2 / docs/sprite_format.md).
+// Loaded once at boot from assets/palettes/{body,eye}.pal ("PPAL").
+typedef struct {
+    uint8_t   entries;     // 16
+    uint8_t   ramp;        // shades per entry
+    uint16_t *rgb565;      // entries*ramp, entry-major, in PSRAM
+} palette_t;
+
 // Bring up the AMOLED panel, FT5x06 touch, and the LVGL port via the
 // Waveshare BSP. After this, an LVGL `lv_display_t` is the active display
 // and a touch `lv_indev_t` is registered.
@@ -88,6 +96,16 @@ bool renderer_load_pet_sprites(const Pet *pet);
 
 // The currently loaded set, or NULL if nothing is loaded yet.
 const pet_sprites_t *renderer_pet_sprites(void);
+
+// Tint helpers (build-order step 5 phase ③). Palettes are loaded at boot;
+// the accessors return NULL if the .pal was missing/invalid (callers then
+// fall back to renderer_gray_rgb565). `gray` is a format-0 pixel's gray
+// byte; `entry` is the body_color/eye_color gene (taken modulo entries).
+const palette_t *renderer_palette_body(void);
+const palette_t *renderer_palette_eye(void);
+uint16_t renderer_tint_rgb565(const palette_t *pal, uint8_t entry,
+                              uint8_t gray);
+uint16_t renderer_gray_rgb565(uint8_t gray);   // untinted layers
 
 // Draw the pet at (x, y). Step 3 is a placeholder circle that ignores
 // `pet`; step 5 will compose layered, gene-tinted sprites from the same

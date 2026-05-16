@@ -38,6 +38,32 @@ maps to a shade of a tint colour chosen from a 16-entry palette indexed by
 genes (`body_color`, `eye_color`). One sprite × 16 palette entries → 16
 variants from a single asset.
 
+### Palette source + `.pal` binary
+
+Human-authored source: `palettes/{name}.png`, **PALETTE_ENTRIES (16) wide
+× PALETTE_RAMP (8) tall** — column = gene index 0–15, row 0 = darkest
+shade, last row = lightest. `build.py` generates a default placeholder
+palette if the PNG is absent. Names: `body`, `eye`.
+
+`build.py` packs it to `assets/palettes/{name}.pal`:
+
+```
+offset  size  field
+0       4     magic   = "PPAL"
+4       1     version = 1
+5       1     entries = 16
+6       1     ramp    = 8           (shades per entry)
+7       1     reserved = 0
+8       N     entries × ramp × uint16 RGB565, little-endian, entry-major
+              (entry0 shade0..7, entry1 shade0..7, …)
+```
+
+On device: `shade = gray * ramp / 256`, then look up
+`rgb565[(gene % entries) * ramp + shade]`. Untinted layers (mouth,
+accessory) bypass the palette and use the grayscale value directly as
+RGB565. Tinting per layer (architecture §5.1): body/tail/ears/pattern use
+the `body_color` palette; eyes use `eye_color`; mouth/accessory untinted.
+
 ## Layer stack (back to front)
 
 ```

@@ -22,6 +22,7 @@ artist left in is intentionally discarded (format 0 = [gray, alpha]).
 from __future__ import annotations
 
 import argparse
+import colorsys
 import json
 import struct
 import sys
@@ -159,6 +160,67 @@ def discover_parts() -> list:
     return found
 
 
+PALETTE_NAMES = ("body", "eye")
+
+
+def _default_palette() -> list:
+    """16 evenly-spaced hues, each an 8-step dark→light ramp. Placeholder
+    until palettes/{name}.png are hand-authored."""
+    rows = []
+    for i in range(fc.PALETTE_ENTRIES):
+        hue = i / fc.PALETTE_ENTRIES
+        ramp = []
+        for s in range(fc.PALETTE_RAMP):
+            t = s / (fc.PALETTE_RAMP - 1)
+            val = 0.22 + 0.74 * t           # darkest → lightest
+            sat = 0.85 - 0.30 * t           # ease saturation in highlights
+            r, g, b = colorsys.hsv_to_rgb(hue, sat, val)
+            ramp.append((round(r * 255), round(g * 255), round(b * 255)))
+        rows.append(ramp)
+    return rows
+
+
+def _palette_from_png(path: Path) -> list:
+    """PNG schema: PALETTE_ENTRIES wide (gene index) × PALETTE_RAMP tall
+    (row 0 darkest → last lightest)."""
+    img = Image.open(path).convert("RGB")
+    w, h = img.size
+    if (w, h) != (fc.PALETTE_ENTRIES, fc.PALETTE_RAMP):
+        raise BuildError(
+            f"{path}: palette must be {fc.PALETTE_ENTRIES}x{fc.PALETTE_RAMP} "
+            f"(entries × shades dark→light), got {w}x{h}")
+    px = img.load()
+    return [[px[x, y] for y in range(h)] for x in range(w)]
+
+
+def build_palettes(dry_run: bool) -> tuple:
+    """Pack palettes/{name}.png (or a generated default) → assets/palettes/
+    {name}.pal. Returns (built, errors)."""
+    built = errors = 0
+    for name in PALETTE_NAMES:
+        src = fc.PALETTES_DIR / f"{name}.png"
+        out = fc.ASSETS_DIR / "palettes" / f"{name}.pal"
+        try:
+            if src.exists():
+                rows = _palette_from_png(src)
+                origin = src.name
+            else:
+                rows = _default_palette()
+                origin = "generated default (no PNG)"
+            size = 8 + fc.PALETTE_ENTRIES * fc.PALETTE_RAMP * 2
+            if dry_run:
+                print(f"  palette {name}: {origin} -> {size} B [dry-run]")
+            else:
+                fc.write_palette_bin(out, rows)
+                print(f"  palette {name}: {origin} -> {out.name} "
+                      f"({out.stat().st_size} B) ok")
+                built += 1
+        except (BuildError, ValueError, OSError) as e:
+            print(f"  ! palette {name}: {e}")
+            errors += 1
+    return built, errors
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Build .bin sprite assets")
     ap.add_argument("--dry-run", action="store_true",
@@ -166,13 +228,16 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     parts = discover_parts()
-    if not parts:
-        print(f"no source art under {fc.PARTS_DIR} — nothing to build")
-        print("expected: parts/{stage}/{layer}/{shape}/{animation}.png")
-        return 0
-
     print(f"output: {fc.ASSETS_DIR}")
     built = errors = 0
+
+    pbuilt, perrors = build_palettes(args.dry_run)
+    built += pbuilt
+    errors += perrors
+
+    if not parts:
+        print(f"no part art under {fc.PARTS_DIR} "
+              f"(expected parts/{{stage}}/{{layer}}/{{shape}}/{{anim}}.png)")
     for stage, layer, shape, pngs in parts:
         if stage not in fc.STAGES:
             print(f"  ! unknown stage '{stage}' (see forge_common.STAGES)")

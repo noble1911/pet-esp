@@ -20,10 +20,13 @@ static const char *TAG = "renderer";
 static lv_display_t *s_disp;
 static bool s_fs_ok;
 static pet_sprites_t s_sprites;
+static palette_t s_pal_body;   // loaded once at boot; lives for process life
+static palette_t s_pal_eye;
 
 #define ASSETS_BASE   "/assets"
 #define ASSETS_LABEL  "assets"
 #define ANCHOR_MAGIC  "PANC"
+#define PALETTE_MAGIC "PPAL"
 #define MAX_SHAPES    16     // shapes per (stage,layer); gene clamps into this
 #define PATH_MAX_LEN  192
 
@@ -229,6 +232,50 @@ done:
     return ok;
 }
 
+// Decode a "PPAL" tint table into PSRAM. File is little-endian RGB565,
+// which is native on the (little-endian) ESP32-S3 — read straight in.
+static bool load_palette(const char *path, palette_t *out)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        return false;
+    }
+    uint8_t hdr[8];
+    uint16_t *buf = NULL;
+    bool ok = false;
+    uint8_t entries = 0, ramp = 0;
+    size_t n = 0;
+    if (fread(hdr, 1, sizeof(hdr), f) != sizeof(hdr)) {
+        goto done;
+    }
+    if (memcmp(hdr, PALETTE_MAGIC, 4) != 0 || hdr[4] != 1
+        || hdr[5] == 0 || hdr[6] == 0) {
+        ESP_LOGW(TAG, "%s: bad palette header", path);
+        goto done;
+    }
+    entries = hdr[5];
+    ramp = hdr[6];
+    n = (size_t)entries * ramp;
+    buf = heap_caps_malloc(n * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    if (!buf) {
+        ESP_LOGE(TAG, "%s: PSRAM alloc failed", path);
+        goto done;
+    }
+    if (fread(buf, sizeof(uint16_t), n, f) != n) {
+        ESP_LOGW(TAG, "%s: short read", path);
+        heap_caps_free(buf);
+        buf = NULL;
+        goto done;
+    }
+    out->entries = entries;
+    out->ramp = ramp;
+    out->rgb565 = buf;
+    ok = true;
+done:
+    fclose(f);
+    return ok;
+}
+
 static void free_sprites(void)
 {
     for (int i = 0; i < LAYER_COUNT; i++) {
@@ -270,6 +317,13 @@ void renderer_init(void)
         ESP_LOGI(TAG, "assets mounted at %s (%u/%u bytes)",
                  ASSETS_BASE, (unsigned)used, (unsigned)total);
         s_fs_ok = true;
+
+        if (!load_palette(ASSETS_BASE "/palettes/body.pal", &s_pal_body)) {
+            ESP_LOGW(TAG, "body palette missing — body layers untinted");
+        }
+        if (!load_palette(ASSETS_BASE "/palettes/eye.pal", &s_pal_eye)) {
+            ESP_LOGW(TAG, "eye palette missing — eyes untinted");
+        }
     }
 }
 
@@ -343,6 +397,38 @@ bool renderer_load_pet_sprites(const Pet *pet)
 const pet_sprites_t *renderer_pet_sprites(void)
 {
     return s_sprites.valid ? &s_sprites : NULL;
+}
+
+const palette_t *renderer_palette_body(void)
+{
+    return s_pal_body.rgb565 ? &s_pal_body : NULL;
+}
+
+const palette_t *renderer_palette_eye(void)
+{
+    return s_pal_eye.rgb565 ? &s_pal_eye : NULL;
+}
+
+uint16_t renderer_gray_rgb565(uint8_t g)
+{
+    // Cast to uint32_t first: avoids signed-int promotion in the shifts and
+    // makes byte-parity with forge_common.rgb565() explicit/portable.
+    uint32_t v = g;
+    return (uint16_t)(((v & 0xF8u) << 8) | ((v & 0xFCu) << 3) | (v >> 3));
+}
+
+uint16_t renderer_tint_rgb565(const palette_t *pal, uint8_t entry,
+                              uint8_t gray)
+{
+    if (pal == NULL || pal->rgb565 == NULL
+        || pal->entries == 0 || pal->ramp == 0) {
+        return renderer_gray_rgb565(gray);
+    }
+    uint8_t shade = (uint8_t)(((uint32_t)gray * pal->ramp) >> 8);
+    if (shade >= pal->ramp) {
+        shade = pal->ramp - 1;
+    }
+    return pal->rgb565[(entry % pal->entries) * pal->ramp + shade];
 }
 
 void renderer_draw_pet(const Pet *pet, int x, int y)

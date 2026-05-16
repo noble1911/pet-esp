@@ -54,3 +54,44 @@ def write_sprite_bin(path: Path, width: int, height: int,
     with path.open("wb") as fh:
         fh.write(pack_sprite_header(width, height, num_frames, fmt))
         fh.write(pixels)
+
+
+# Palette tint table (architecture §5.2, docs/sprite_format.md). A palette
+# is PALETTE_ENTRIES gene-indexed columns × PALETTE_RAMP shade rows
+# (dark→light). The renderer maps a pixel's gray to a shade row
+# (shade = gray * ramp // 256) and looks up RGB565 — no per-pixel math.
+PALETTE_MAGIC = b"PPAL"
+PALETTE_VERSION = 1
+PALETTE_ENTRIES = 16   # body_color / eye_color genes are 0..15
+PALETTE_RAMP = 8       # shades per entry
+
+
+def rgb565(r: int, g: int, b: int) -> int:
+    """8-8-8 → 5-6-5, matching the on-device renderer."""
+    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+
+
+def pack_palette_header(entries: int, ramp: int) -> bytes:
+    if not 0 < entries < 256 or not 0 < ramp < 256:
+        raise ValueError("palette entries/ramp out of 1..255")
+    return PALETTE_MAGIC + struct.pack("<BBBB", PALETTE_VERSION,
+                                       entries, ramp, 0)
+
+
+def write_palette_bin(path: Path, ramp_rgb) -> None:
+    """Write a "PPAL" table. `ramp_rgb` is PALETTE_ENTRIES rows, each
+    PALETTE_RAMP (r,g,b) tuples ordered darkest→lightest. Body is
+    entry-major uint16 RGB565, little-endian."""
+    if len(ramp_rgb) != PALETTE_ENTRIES:
+        raise ValueError(
+            f"need {PALETTE_ENTRIES} entries, got {len(ramp_rgb)}")
+    body = bytearray()
+    for entry in ramp_rgb:
+        if len(entry) != PALETTE_RAMP:
+            raise ValueError(f"each entry needs {PALETTE_RAMP} shades")
+        for (r, g, b) in entry:
+            body += struct.pack("<H", rgb565(r, g, b))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as fh:
+        fh.write(pack_palette_header(PALETTE_ENTRIES, PALETTE_RAMP))
+        fh.write(bytes(body))
