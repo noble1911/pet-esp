@@ -426,6 +426,7 @@ single-device experience reads as a toy rather than a tech demo. Concretely:
   `eat` / `play` / `sleep` / `clean` states. The pet visibly breathes or
   drifts within its area, never holds a static frame.
   - ✓ idle frame cycling at 5 fps (`2a11c48`)
+  - ✓ tap-the-pet hop + differentiated care reactions (hop/wiggle/shake) + idle breathe (`795ad86`)
   - pending: eye blink (needs `blink` eye animation art)
   - pending: per-care body state overrides (needs `eat`/`sleep`/`play`/`clean` body art)
 - **Vary.** Fresh hatches get random genes within their valid ranges; palettes
