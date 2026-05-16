@@ -272,9 +272,9 @@ order is recommended but not strict — anything can land independently.
 | Track | Description | Blocked by |
 |-------|-------------|-----------|
 | **L** Layout overhaul | Re-arrange stat strip (top), scene area (middle), action dock (bottom). Uses placeholder rect-backgrounds until real scenes land. | ✓ landed (`6fe6511`) |
-| **I** Icon-ify stats + buttons | Replace label text with icons; replace button text with icons. | first 4 icons (food/heart/bed/soap) |
+| **I** Icon-ify stats + buttons | Replace label text with icons; replace button text with icons. | ✓ landed (`cc9cb5d`, `d539425`) — apple from items + hand-drawn heart / zzz / drop |
 | **S** Scene rendering | Background image as the screen base layer; pet drawn on top. Default = home. | `home.png` |
-| **M** Menu modal | Gear → modal with Pet info / Settings entries. | `gear.png`, `arrow_back.png` |
+| **M** Menu modal | Top-right icon → modal with Pet stats / future settings entries. | ✓ landed (`d539425`) — bar-chart icon, X close, scrollable stat rows |
 | **X** Scene swapping | State-driven scene change (kitchen on Feed, bedroom on Rest, etc.). | corresponding scene PNGs |
 | **F** Smaller stat strip | Compress the 4-row stacked bars into a 40 px horizontal strip with icons. | rolled into L (already a 40 px strip after layout overhaul) |
 
