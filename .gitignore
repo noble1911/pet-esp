@@ -24,3 +24,7 @@ venv/
 Thumbs.db
 *.swp
 *~
+
+# VS Code ESP-IDF extension state (user-specific paths + caches)
+.vscode/
+firmware/.cache/

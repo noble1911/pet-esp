@@ -43,8 +43,16 @@ typedef enum {
     LAYER_COUNT     = 7,
 } sprite_layer_t;
 
-// Bring up display + LVGL. Safe no-op until build-order step 2.
+// Bring up the AMOLED panel, FT5x06 touch, and the LVGL port via the
+// Waveshare BSP. After this, an LVGL `lv_display_t` is the active display
+// and a touch `lv_indev_t` is registered.
 void renderer_init(void);
+
+// Lock LVGL for thread-safe object manipulation; pair with renderer_unlock().
+// timeout_ms = 0 means block indefinitely (the right choice during one-shot
+// UI construction at boot).
+bool renderer_lock(uint32_t timeout_ms);
+void renderer_unlock(void);
 
 // TODO(build-order:5): load a stage's sprite library from SD into PSRAM.
 bool renderer_load_pet_sprites(const Pet *pet);

@@ -12,17 +12,19 @@ This document is the design source of truth. Implementation should follow these 
 
 Relevant specs:
 
-- ESP32-S3 dual-core Xtensa LX7 @ 240 MHz
-- 16 MB flash, 8 MB PSRAM, 512 KB SRAM
+- ESP32-S3 dual-core Xtensa LX7 @ 240 MHz (silicon rev v0.2 on our unit)
+- 16 MB flash (Winbond W25Q128, QIO), 8 MB embedded PSRAM (octal), 512 KB SRAM
 - 1.8" AMOLED, 368 × 448, 16.7M colours
-  - Display driver: SH8601 (QSPI)
-  - Touch controller: FT3168 (I²C, capacitive)
-- 6-axis IMU (accelerometer + gyroscope)
-- RTC with battery backup pads
-- Speaker + audio codec + microphone
-- microSD slot
+  - Display driver: SH8601 (QSPI). Reset routed via the TCA9554 I/O expander, not a direct GPIO.
+  - Touch controller: capacitive, Focaltech FT5x06-compatible. The chip is marked FT3168 in the product brief, but Waveshare's BSP drives it with `esp_lcd_touch_ft5x06` (register-compatible). Touch reset also routed via the TCA9554.
+- 6-axis IMU: **QMI8658** (accelerometer + gyroscope, I²C)
+- External RTC: **PCF85063** on I²C, with battery backup pads. More accurate over week-scale power-off intervals than the S3's built-in RTC — important for the tick-on-wake model in §4.2.
+- Speaker + microphone via **ES8311** audio codec (I²S)
+- microSD slot (SDMMC)
 - Wi-Fi 2.4 GHz + Bluetooth 5 (LE) — onboard antenna
-- USB-C, LiPo battery header (MX1.25)
+- USB-C (native USB-Serial/JTAG on the S3, no bridge chip), LiPo battery header (MX1.25)
+- Power management: **AXP2101** PMIC (USB-C charging, rail switching)
+- I/O expander: **TCA9554** on I²C. Display reset, touch reset, and backlight enable all route through this expander rather than direct GPIOs — any driver that resets the display must bring up the expander first.
 - Case included; no physical buttons beyond reset/boot
 
 **Input model:** capacitive touch (primary), IMU for shake/tilt gestures, microphone reserved for later.
@@ -31,12 +33,13 @@ Relevant specs:
 
 ## 2. Software stack
 
-- **Framework:** ESP-IDF via PlatformIO in VS Code (preferred), or Arduino-ESP32 as fallback.
-- **GUI:** LVGL (v9.x). Handles sprite blitting, animation, touch input.
-- **Persistence:** ESP-IDF NVS for pet state and small key-values; SD card for sprite assets and sound files.
+- **Framework:** native ESP-IDF (`idf.py`) pinned to the **5.3.x LTS line**. Recommended IDE is VS Code with the Espressif ESP-IDF extension. v6.x is *not* supported until Waveshare publishes a BSP release that's been tested against it — internal API drift between 5.3 and 6.0 breaks BSP 1.1.3 in ways that can't be patched in one place. Arduino-ESP32 is no longer a documented fallback.
+- **Board support:** Waveshare's published BSP (`waveshare/esp32_s3_touch_amoled_1_8`) is consumed as a managed component. It provides init for the display (SH8601 over QSPI), touch (FT5x06), audio (ES8311 over I²S), SD/MMC, and the TCA9554 I/O expander.
+- **GUI:** LVGL (v9.x). Handles sprite blitting, animation, touch input. The BSP pins LVGL to `>=8,<10`, so 9.x is the target.
+- **Persistence:** ESP-IDF NVS for pet state and small key-values. Sprite assets and sound files are embedded in flash for MVP (steps 1–7); SD is reserved for the extended asset library once we outgrow flash.
 - **Networking:** ESP-NOW for device-to-device. Wi-Fi STA and BLE reserved for later (phone companion app, OTA).
-- **Audio:** ESP-IDF audio drivers, simple beep/chirp samples from SD.
-- **Build:** PlatformIO + standard ESP-IDF component model. Sprite assets built by a separate Python tool (see §8).
+- **Audio:** ES8311 codec via ESP-IDF audio drivers. Sample format and source (synth vs. PCM) still open — see §11.
+- **Build:** `idf.py` with ESP-IDF Component Manager. Sprite assets built by a separate Python tool (see §8).
 
 ---
 

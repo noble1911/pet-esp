@@ -1,0 +1,12 @@
+## Managed-component dependencies for the pet-esp main app.
+## The Waveshare BSP transitively pulls SH8601, FT5x06 touch, ES8311 codec,
+## TCA9554 I/O expander, esp_lvgl_port, and LVGL itself — declaring it here
+## is enough to bring up display + touch + audio + SD.
+##
+## IDF version is pinned to the 5.3.x LTS line because Waveshare BSP 1.1.3
+## fails to compile on IDF 6.x — internal API drift, not just missing
+## REQUIRES. Revisit when the BSP publishes a v6-compatible release.
+dependencies:
+  idf:
+    version: ">=5.3,<6"
+  waveshare/esp32_s3_touch_amoled_1_8: "*"

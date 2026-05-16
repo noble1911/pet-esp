@@ -1,7 +1,8 @@
 # renderer — LVGL display driver, sprite loader, layered composition
-# (architecture §5). LVGL is added as a dependency at build-order step 2.
+# (architecture §5). Bring-up runs through the Waveshare BSP, which itself
+# pulls SH8601, FT5x06, esp_lvgl_port, and LVGL.
 idf_component_register(
     SRCS "renderer.c"
     INCLUDE_DIRS "include"
-    REQUIRES pet_state
+    REQUIRES pet_state waveshare__esp32_s3_touch_amoled_1_8 lvgl__lvgl
 )

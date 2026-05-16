@@ -7,11 +7,24 @@ CONFIG_IDF_TARGET="esp32s3"
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
 
+# Custom partition table (firmware/partitions.csv)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+
 # PSRAM: 8 MB octal. Sprite buffers (~500 KB, architecture §5.4) live here.
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_USE_MALLOC=y
+# Execute code and read constants directly from PSRAM — frees flash for app
+# and accelerates large LVGL/sprite working sets.
+CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
+CONFIG_SPIRAM_RODATA=y
+
+# Performance: max CPU clock, 64 B cache lines (PSRAM win), -O2-equivalent.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
 # 1 kHz tick for smooth UI / animation timing (architecture §5.5)
 CONFIG_FREERTOS_HZ=1000

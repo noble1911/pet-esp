@@ -9,12 +9,15 @@ Two devices can meet over ESP-NOW and share a play space across their screens.
 ## Layout
 
 ```
-firmware/        ESP-IDF / PlatformIO firmware (the device)
-  src/main.c     Entry point
+firmware/        ESP-IDF firmware (the device)
+  main/main.c    Entry point (app_main)
   components/    pet_state, renderer, radio, ui, audio
   assets/        Built .bin sprites (gitignored — produced by sprite_forge)
+  partitions.csv Custom partition layout
+  sdkconfig.defaults  Checked-in defaults (per-build sdkconfig is gitignored)
 sprite_forge/    Laptop-side Python tool: PNG art -> .bin sprite sheets
 docs/            Architecture and sub-specs
+backup/          Factory firmware image (restore reference)
 ```
 
 ## Status
@@ -26,14 +29,19 @@ are stubs marked with `TODO(build-order:N)` against that list.
 
 ## Getting started
 
-Firmware (PlatformIO + ESP-IDF):
+Firmware (ESP-IDF **v5.3.x LTS** via `idf.py`, e.g. through the VS Code ESP-IDF extension — see architecture.md §2 for why v6 is currently not supported):
 
 ```
 cd firmware
-pio run                 # build
-pio run -t upload       # flash
-pio device monitor      # serial log
+idf.py set-target esp32s3      # first time only
+idf.py build                   # compile
+idf.py -p <PORT> flash         # upload (PORT e.g. /dev/cu.usbmodem*)
+idf.py -p <PORT> monitor       # serial log
+idf.py -p <PORT> flash monitor # all-in-one
 ```
+
+A factory firmware backup for the unit we're developing against lives in
+[backup/](backup/) — restore instructions are at the top of that folder.
 
 Sprite forge (laptop, Python 3.10+):
 
