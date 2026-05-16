@@ -91,8 +91,16 @@ const Pet *pet_state_get(void);  // current in-RAM pet (NULL if none)
 // Real-time model (architecture §4.2) -----------------------------------
 
 // Apply elapsed-time decay + evolution check using the RTC. Called on
-// wake/boot and on a slow (~60 s) timer. TODO(build-order:4).
+// wake/boot and on the periodic tick.
 void pet_state_tick(uint32_t now_unix);
+
+// Care actions (build-order step 6) — each restores its respective need
+// by a fixed amount (clamped to 100) and saves to NVS atomically. The UI
+// is responsible for refreshing the on-screen state after a care action.
+void pet_state_feed(void);    // hunger
+void pet_state_play(void);    // happiness
+void pet_state_rest(void);    // energy
+void pet_state_clean(void);   // hygiene
 
 // Evolution (architecture §4.3) -----------------------------------------
 

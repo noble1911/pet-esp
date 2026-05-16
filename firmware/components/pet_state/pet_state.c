@@ -1,5 +1,6 @@
-// pet_state implementation — build-order step 4: hunger decay + NVS
-// persistence. Evolution / happiness / energy / hygiene wait their turn.
+// pet_state implementation — build-order step 6: all four needs (hunger,
+// happiness, energy, hygiene) decay independently, and care actions can
+// restore each one. Evolution / breeding stay stubbed.
 
 #include "pet_state.h"
 
@@ -13,15 +14,30 @@ static const char *TAG = "pet_state";
 #define NVS_NAMESPACE "pet"
 #define NVS_KEY       "blob"
 
-// Dev tuning — visible decay in tens of seconds. Architecture §11 flags
-// "exact decay rates per need" as an open question; this is the placeholder.
-#define HUNGER_DECAY_PERIOD_SEC 10
+// Dev tuning — visible decay in tens of seconds. Hunger decays fastest so
+// food is the most common care need; the others trail. Architecture §11
+// flags exact per-need rates as an open question.
+#define HUNGER_DECAY_PERIOD_SEC    10
+#define HAPPINESS_DECAY_PERIOD_SEC 15
+#define ENERGY_DECAY_PERIOD_SEC    20
+#define HYGIENE_DECAY_PERIOD_SEC   25
+
+// Care actions add this much to their target need, clamped to 100.
+#define CARE_RESTORE_AMOUNT 30
 
 // docs/gene_spec.md: GENE_MAX[8] = {8,16,8,16,8,8,8,8}
 const uint8_t PET_GENE_MAX[8] = { 8, 16, 8, 16, 8, 8, 8, 8 };
 
 static Pet  s_pet;
 static bool s_have_pet = false;
+
+// Per-need elapsed accumulators so slow-decaying needs aren't starved when
+// the tick interval is shorter than their period. RAM-only — reset on
+// reboot. Worst-case loss is (period - 1) seconds of progress per power-off,
+// which is invisible at current dev tuning. Promoting these to persistent
+// fields on `Pet` would require a schema bump.
+enum { ACC_HUNGER, ACC_HAPPINESS, ACC_ENERGY, ACC_HYGIENE, ACC_COUNT };
+static uint32_t s_decay_acc[ACC_COUNT];
 
 static void pet_hatch(void)
 {
@@ -43,11 +59,12 @@ void pet_state_init(void)
         // resetting last_tick avoids a billion-second elapsed jump that
         // would instantly zero every need.
         s_pet.last_tick = (uint32_t)time(NULL);
-        ESP_LOGI(TAG, "loaded from NVS: hunger=%d", s_pet.hunger);
+        ESP_LOGI(TAG, "loaded from NVS: H=%d Hp=%d E=%d Hy=%d",
+                 s_pet.hunger, s_pet.happiness, s_pet.energy, s_pet.hygiene);
     } else {
         pet_hatch();
         pet_state_save(&s_pet);
-        ESP_LOGI(TAG, "hatched fresh egg: hunger=%d", s_pet.hunger);
+        ESP_LOGI(TAG, "hatched fresh egg");
     }
 }
 
@@ -79,23 +96,55 @@ const Pet *pet_state_get(void)
     return s_have_pet ? &s_pet : NULL;
 }
 
+// Bank elapsed seconds into a per-need accumulator and apply decay when it
+// crosses the period (keeping the remainder for next time). Returns true
+// if the value changed.
+static bool decay_one(uint8_t *value, uint32_t *acc,
+                      uint32_t elapsed, uint32_t period)
+{
+    if (period == 0) return false;
+    *acc += elapsed;
+    uint32_t d = *acc / period;
+    if (d == 0) return false;
+    *acc -= d * period;
+    *value = (d >= *value) ? 0 : (uint8_t)(*value - d);
+    return true;
+}
+
 void pet_state_tick(uint32_t now_unix)
 {
     if (!s_have_pet) return;
     if (now_unix <= s_pet.last_tick) return;
 
     uint32_t elapsed = now_unix - s_pet.last_tick;
-    uint32_t decay = elapsed / HUNGER_DECAY_PERIOD_SEC;
-    if (decay == 0) return;
+    bool dirty = false;
+    dirty |= decay_one(&s_pet.hunger,    &s_decay_acc[ACC_HUNGER],
+                       elapsed, HUNGER_DECAY_PERIOD_SEC);
+    dirty |= decay_one(&s_pet.happiness, &s_decay_acc[ACC_HAPPINESS],
+                       elapsed, HAPPINESS_DECAY_PERIOD_SEC);
+    dirty |= decay_one(&s_pet.energy,    &s_decay_acc[ACC_ENERGY],
+                       elapsed, ENERGY_DECAY_PERIOD_SEC);
+    dirty |= decay_one(&s_pet.hygiene,   &s_decay_acc[ACC_HYGIENE],
+                       elapsed, HYGIENE_DECAY_PERIOD_SEC);
 
-    s_pet.hunger = (decay >= s_pet.hunger) ? 0 : (uint8_t)(s_pet.hunger - decay);
-    // Advance last_tick by the consumed periods only — sub-period remainder
-    // accrues toward the next tick so decay rate is exact over the long run.
-    s_pet.last_tick += decay * HUNGER_DECAY_PERIOD_SEC;
-    // TODO(prod tuning): batch saves to reduce flash wear (~8k writes/day at
-    // 10 s tick is fine for dev, not for years of always-on runtime).
+    // Always advance last_tick — the accumulators captured the elapsed
+    // seconds, so re-using last_tick=old would double-count next tick.
+    s_pet.last_tick = now_unix;
+    if (dirty) pet_state_save(&s_pet);
+}
+
+static void care_restore(uint8_t *value, uint8_t boost)
+{
+    if (!s_have_pet) return;
+    uint16_t v = (uint16_t)*value + boost;
+    *value = (v > 100) ? 100 : (uint8_t)v;
     pet_state_save(&s_pet);
 }
+
+void pet_state_feed(void)  { care_restore(&s_pet.hunger,    CARE_RESTORE_AMOUNT); }
+void pet_state_play(void)  { care_restore(&s_pet.happiness, CARE_RESTORE_AMOUNT); }
+void pet_state_rest(void)  { care_restore(&s_pet.energy,    CARE_RESTORE_AMOUNT); }
+void pet_state_clean(void) { care_restore(&s_pet.hygiene,   CARE_RESTORE_AMOUNT); }
 
 void pet_state_check_evolution(void)
 {

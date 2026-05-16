@@ -1,5 +1,6 @@
-// ui implementation — build-order step 4: pet placeholder + debug
-// hunger overlay. Stat bars, feed button, menus land at step 6.
+// ui implementation — build-order step 6: "now it's a pet". Stat bars at
+// the top, pet placeholder in the middle, four care buttons at the bottom.
+// Touch the buttons to restore the matching need; bars update immediately.
 
 #include "ui.h"
 #include "renderer.h"
@@ -7,7 +8,57 @@
 #include "lvgl.h"
 
 static const char *TAG = "ui";
-static lv_obj_t *s_hunger_label;
+
+// Stat bar handles — index matches need_t order below.
+enum { NEED_HUNGER, NEED_HAPPINESS, NEED_ENERGY, NEED_HYGIENE, NEED_COUNT };
+static lv_obj_t *s_bars[NEED_COUNT];
+
+// Bar styling — distinct hues per need so all four stay readable at a glance.
+static const uint32_t s_bar_colors[NEED_COUNT] = {
+    0xff8a40,  // hunger — warm orange (food)
+    0xffd166,  // happiness — yellow
+    0x4a9aff,  // energy — blue
+    0x66d9c2,  // hygiene — cyan
+};
+static const char *s_bar_labels[NEED_COUNT] = {
+    "Hunger", "Happiness", "Energy", "Hygiene"
+};
+
+// Care action callbacks. Each restores its need and immediately refreshes
+// the bars — don't wait the up-to-10s for the next periodic tick.
+static void on_feed_cb(lv_event_t *e)  { (void)e; pet_state_feed();  ui_refresh_stats(); }
+static void on_play_cb(lv_event_t *e)  { (void)e; pet_state_play();  ui_refresh_stats(); }
+static void on_rest_cb(lv_event_t *e)  { (void)e; pet_state_rest();  ui_refresh_stats(); }
+static void on_clean_cb(lv_event_t *e) { (void)e; pet_state_clean(); ui_refresh_stats(); }
+
+static lv_obj_t *make_stat_bar(lv_obj_t *parent, const char *name,
+                               int y, uint32_t color)
+{
+    lv_obj_t *label = lv_label_create(parent);
+    lv_label_set_text(label, name);
+    lv_obj_set_style_text_color(label, lv_color_hex(0xe5e5e5), 0);
+    lv_obj_set_pos(label, 8, y);
+
+    lv_obj_t *bar = lv_bar_create(parent);
+    lv_bar_set_range(bar, 0, 100);
+    lv_obj_set_size(bar, 220, 14);
+    lv_obj_set_pos(bar, 120, y + 4);
+    lv_obj_set_style_bg_color(bar, lv_color_hex(0x303744), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(bar, lv_color_hex(color), LV_PART_INDICATOR);
+    return bar;
+}
+
+static void make_care_button(lv_obj_t *parent, const char *text,
+                             int x, int y, lv_event_cb_t cb)
+{
+    lv_obj_t *btn = lv_button_create(parent);
+    lv_obj_set_size(btn, 80, 70);
+    lv_obj_set_pos(btn, x, y);
+    lv_obj_t *lbl = lv_label_create(btn);
+    lv_label_set_text(lbl, text);
+    lv_obj_center(lbl);
+    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
+}
 
 void ui_init(void)
 {
@@ -19,36 +70,44 @@ void ui_init(void)
     lv_obj_t *scr = lv_screen_active();
     lv_obj_set_style_bg_color(scr, lv_color_hex(0x101820), 0);
 
-    // 128x128 pet placeholder centered on the 368x448 AMOLED. The render
-    // footprint matches architecture §5.4's per-pet budget — genes and
-    // animations slot into the same call site at step 5.
-    renderer_draw_pet(pet_state_get(), 120, 160);
+    // Stat bars — 4 rows of (label + bar), top 92px of the screen.
+    for (int i = 0; i < NEED_COUNT; i++) {
+        s_bars[i] = make_stat_bar(scr, s_bar_labels[i],
+                                  4 + i * 22, s_bar_colors[i]);
+    }
 
-    // Step 4 debug overlay — top-center, light gray, Montserrat 24 so the
-    // value is readable from arm's length. Tick callback updates it via
-    // ui_refresh_stats().
-    s_hunger_label = lv_label_create(scr);
-    lv_obj_align(s_hunger_label, LV_ALIGN_TOP_MID, 0, 12);
-    lv_obj_set_style_text_color(s_hunger_label, lv_color_hex(0xe5e5e5), 0);
-    lv_obj_set_style_text_font(s_hunger_label, &lv_font_montserrat_24, 0);
-    lv_label_set_text(s_hunger_label, "Hunger: --");
+    // Pet placeholder — slightly higher than step 3 to make room for the
+    // bars; still horizontally centered on the 368-wide AMOLED.
+    renderer_draw_pet(pet_state_get(), 120, 130);
+
+    // Care buttons — bottom row, ~80x70 each, 8px gutter; total width
+    // (4*80 + 3*8) = 344, centered in 368 by starting at x=12.
+    make_care_button(scr, "Feed",  12,  368, on_feed_cb);
+    make_care_button(scr, "Play",  100, 368, on_play_cb);
+    make_care_button(scr, "Rest",  188, 368, on_rest_cb);
+    make_care_button(scr, "Clean", 276, 368, on_clean_cb);
 
     renderer_unlock();
-    ESP_LOGI(TAG, "pet + hunger overlay drawn (build-order:4)");
+    ui_refresh_stats();
+    ESP_LOGI(TAG, "stat bars + care buttons up (build-order:6)");
 }
 
 void ui_refresh_stats(void)
 {
     const Pet *p = pet_state_get();
-    if (p == NULL || s_hunger_label == NULL) return;
+    if (p == NULL || s_bars[0] == NULL) return;
     if (!renderer_lock(0)) return;
-    lv_label_set_text_fmt(s_hunger_label, "Hunger: %d", p->hunger);
+    lv_bar_set_value(s_bars[NEED_HUNGER],    p->hunger,    LV_ANIM_OFF);
+    lv_bar_set_value(s_bars[NEED_HAPPINESS], p->happiness, LV_ANIM_OFF);
+    lv_bar_set_value(s_bars[NEED_ENERGY],    p->energy,    LV_ANIM_OFF);
+    lv_bar_set_value(s_bars[NEED_HYGIENE],   p->hygiene,   LV_ANIM_OFF);
     renderer_unlock();
 }
 
 void ui_show_home(void)
 {
-    // TODO(build-order:6): stat bars, feed/care actions, menus.
+    // TODO(build-order:6+): split current home screen into reusable screens
+    //                       once menus / settings need to coexist.
 }
 
 void ui_show_emote(emote_id_t emote)
