@@ -125,6 +125,15 @@ typedef enum {
 
 void renderer_pet_react(pet_reaction_t kind);
 
+// Pop an emote bubble above the pet for `duration_ms`, then auto-dismiss.
+// Single-slot: a new call replaces any in-flight emote (no queue). The
+// bubble is positioned above the pet's current base coordinates, so it
+// follows wherever renderer_draw_pet last placed the pet. `emote_id`
+// uses the IDs in ui.h (emote_id_t); IDs without art draw nothing.
+// Caller must hold renderer_lock() — same threading rule as the rest
+// of the renderer API.
+void renderer_show_emote(uint8_t emote_id, uint32_t duration_ms);
+
 #ifdef __cplusplus
 }
 #endif

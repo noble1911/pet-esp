@@ -170,6 +170,7 @@ static void food_eat_complete_cb(lv_timer_t *t)
     food_cleanup_dropped();
     pet_state_feed();
     renderer_pet_react(REACT_HOP);
+    renderer_show_emote(EMOTE_AFFECTION, 2000);
     ui_refresh_stats();
 }
 
@@ -239,10 +240,14 @@ static void food_picker_show(void)
 }
 
 // --- Care action callbacks --------------------------------------------
+// Care actions emit an emote bubble alongside the body reaction so the
+// pet "speaks" to the user about each interaction (architecture §7.4):
+// Feed -> affection heart (post-eat, fires from food_eat_complete_cb),
+// Play -> excited star, Rest -> sleepy zzz, Clean -> water drop.
 static void on_feed_cb(lv_event_t *e)  { (void)e; food_picker_show(); }
-static void on_play_cb(lv_event_t *e)  { (void)e; pet_state_play();  renderer_pet_react(REACT_WIGGLE); ui_refresh_stats(); }
-static void on_rest_cb(lv_event_t *e)  { (void)e; pet_state_rest();  sleep_view_enter(); ui_refresh_stats(); }
-static void on_clean_cb(lv_event_t *e) { (void)e; pet_state_clean(); renderer_pet_react(REACT_SHAKE); ui_refresh_stats(); }
+static void on_play_cb(lv_event_t *e)  { (void)e; pet_state_play();  renderer_pet_react(REACT_WIGGLE); renderer_show_emote(EMOTE_EXCITED, 2000); ui_refresh_stats(); }
+static void on_rest_cb(lv_event_t *e)  { (void)e; pet_state_rest();  sleep_view_enter(); renderer_show_emote(EMOTE_SLEEPY, 2000); ui_refresh_stats(); }
+static void on_clean_cb(lv_event_t *e) { (void)e; pet_state_clean(); renderer_pet_react(REACT_SHAKE); renderer_show_emote(EMOTE_THIRSTY, 2000); ui_refresh_stats(); }
 
 // --- Scene background placeholders ------------------------------------
 // Real scene art (home.png) replaces these via Track S. For now they
