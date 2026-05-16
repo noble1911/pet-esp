@@ -37,7 +37,12 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 # NVS holds the single Pet blob (architecture §4.1)
 CONFIG_NVS_ENCRYPTION=n
 
-# LVGL fonts: enable Montserrat 24 in addition to the 14-point default so
-# the step-4 debug overlay is readable from arm's length on the 368x448
-# AMOLED.
+# LVGL fonts: pixel-art aesthetic for the polish gate's "look like a toy"
+# track — UNSCII is LVGL's bundled bitmap pixel font (8 px + 16 px). The
+# 16 px variant is the project default so widget internals (button labels,
+# etc.) get pixelated for free. Montserrat 24 stays available as a fallback
+# for any spot that still needs a softer face.
+CONFIG_LV_FONT_UNSCII_8=y
+CONFIG_LV_FONT_UNSCII_16=y
+CONFIG_LV_FONT_DEFAULT_UNSCII_16=y
 CONFIG_LV_FONT_MONTSERRAT_24=y
