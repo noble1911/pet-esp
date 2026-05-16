@@ -36,6 +36,10 @@ typedef enum {
 // Build LVGL screens + input. Safe no-op until build-order step 6.
 void ui_init(void);
 
+// Re-read pet_state and refresh the debug stat overlay. Cheap; safe to
+// call from any task (locks LVGL internally). Step 4 surfaces hunger.
+void ui_refresh_stats(void);
+
 // TODO(build-order:6): main screen — stat bars, feed button, menus.
 void ui_show_home(void);
 

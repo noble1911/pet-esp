@@ -1,14 +1,10 @@
 // pet-esp firmware entry point.
 //
-// Skeleton only. The build order (architecture §10) is followed step by
-// step; each step ends with a working, demoable artifact. This file wires
-// components together as those steps land — it does not implement features
-// ahead of the list.
-//
+// Build order (architecture §10) — each step ends with a working artifact:
 //   1. Hardware smoke test (factory demo — not this firmware)
-//   2. LVGL hello world          -> renderer
-//   3. Pet exists (placeholder)  -> renderer
-//   4. Pet ticks + NVS           -> pet_state
+//   2. LVGL hello world          -> renderer            DONE
+//   3. Pet exists (placeholder)  -> renderer + ui       DONE
+//   4. Pet ticks + NVS           -> pet_state           DONE
 //   5. Real renderer             -> renderer
 //   6. UI loop                   -> ui
 //   7. Evolution                 -> pet_state
@@ -19,7 +15,10 @@
 //  12. Mini-game + dance         -> radio + ui + audio
 //  13. Breeding                  -> pet_state + radio
 
+#include <time.h>
+
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "nvs_flash.h"
 
 #include "pet_state.h"
@@ -30,9 +29,22 @@
 
 static const char *TAG = "pet";
 
+// Architecture §4.2 calls for a slow (~60 s) tick. While step 4 is dev-
+// tuned to faster decay for visibility, keeping the polling interval
+// short means the overlay stays responsive to care actions when those
+// land at step 6.
+#define TICK_INTERVAL_US (10ULL * 1000 * 1000)
+
+static void tick_cb(void *arg)
+{
+    (void)arg;
+    pet_state_tick((uint32_t)time(NULL));
+    ui_refresh_stats();
+}
+
 void app_main(void)
 {
-    ESP_LOGI(TAG, "pet-esp boot (skeleton)");
+    ESP_LOGI(TAG, "pet-esp boot");
 
     // NVS must come up first: the Pet blob lives here (architecture §4.1).
     esp_err_t err = nvs_flash_init();
@@ -43,14 +55,26 @@ void app_main(void)
         ESP_ERROR_CHECK(err);
     }
 
-    // Components self-init into a no-op until their build-order step lands.
     pet_state_init();
     renderer_init();
     audio_init();
     ui_init();
     radio_init();
 
-    // TODO(build-order:4): periodic tick (~60 s) -> pet_state_tick().
-    // TODO(build-order:6): hand the main loop to the UI / LVGL task.
-    ESP_LOGI(TAG, "init complete; no feature loop yet");
+    // First paint shouldn't show the "--" placeholder. last_tick is reset
+    // on load (pet_state_init) so this initial tick is a clean no-op
+    // beyond the label refresh.
+    pet_state_tick((uint32_t)time(NULL));
+    ui_refresh_stats();
+
+    const esp_timer_create_args_t args = {
+        .callback = tick_cb,
+        .name     = "pet_tick",
+    };
+    esp_timer_handle_t timer;
+    ESP_ERROR_CHECK(esp_timer_create(&args, &timer));
+    ESP_ERROR_CHECK(esp_timer_start_periodic(timer, TICK_INTERVAL_US));
+
+    ESP_LOGI(TAG, "init complete; tick every %llu s",
+             (unsigned long long)(TICK_INTERVAL_US / 1000000ULL));
 }

@@ -31,3 +31,8 @@ CONFIG_FREERTOS_HZ=1000
 
 # NVS holds the single Pet blob (architecture §4.1)
 CONFIG_NVS_ENCRYPTION=n
+
+# LVGL fonts: enable Montserrat 24 in addition to the 14-point default so
+# the step-4 debug overlay is readable from arm's length on the 368x448
+# AMOLED.
+CONFIG_LV_FONT_MONTSERRAT_24=y
