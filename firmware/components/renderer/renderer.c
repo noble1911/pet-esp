@@ -431,13 +431,197 @@ uint16_t renderer_tint_rgb565(const palette_t *pal, uint8_t entry,
     return pal->rgb565[(entry % pal->entries) * pal->ramp + shade];
 }
 
+// ---- Composition (build-order step 5 phase ④) ------------------------
+//
+// Back-to-front src-over alpha blend of the loaded, gene-tinted layers
+// into an ARGB8888 buffer (LVGL needs per-pixel alpha). Frame 0 only —
+// the ~5 fps animation timer is a later build step; §5 permits a static
+// placeholder. Layers are placed body-relative: body & pattern at (0,0),
+// upper layers at their PANC anchor. Out-of-canvas pixels are clipped.
+
+static uint32_t *s_canvas;          // ARGB8888 (0xAARRGGBB), PSRAM
+static int       s_canvas_w, s_canvas_h;
+static lv_image_dsc_t s_pet_img;
+static lv_obj_t *s_pet_obj;
+static lv_obj_t *s_placeholder_obj;   // shown only on load/compose failure
+
+static void anchor_for(const pet_sprites_t *ps, int layer,
+                       int *ox, int *oy)
+{
+    *ox = 0;
+    *oy = 0;
+    switch (layer) {
+    case LAYER_EYES:  *ox = ps->anchors.eyes[0];  *oy = ps->anchors.eyes[1];  break;
+    case LAYER_MOUTH: *ox = ps->anchors.mouth[0]; *oy = ps->anchors.mouth[1]; break;
+    case LAYER_EARS:  *ox = ps->anchors.ears[0];  *oy = ps->anchors.ears[1];  break;
+    case LAYER_TAIL:  *ox = ps->anchors.tail[0];  *oy = ps->anchors.tail[1];  break;
+    case LAYER_ACCESSORY:
+        *ox = ps->anchors.accessory[0]; *oy = ps->anchors.accessory[1]; break;
+    default: break;  // BODY, PATTERN -> (0,0)
+    }
+}
+
+// Per architecture §5.1: body/tail/ears/pattern use the body_color tint;
+// eyes use eye_color; mouth/accessory are untinted (gray).
+static const palette_t *tint_for(int layer, const Pet *pet, uint8_t *entry)
+{
+    switch (layer) {
+    case LAYER_EYES:
+        *entry = pet->genes[GENE_EYE_COLOR];
+        return renderer_palette_eye();
+    case LAYER_BODY:
+    case LAYER_TAIL:
+    case LAYER_EARS:
+    case LAYER_PATTERN:
+        *entry = pet->genes[GENE_BODY_COLOR];
+        return renderer_palette_body();
+    default:                  // mouth, accessory
+        *entry = 0;
+        return NULL;
+    }
+}
+
+static bool compose_pet(const Pet *pet)
+{
+    const pet_sprites_t *ps = renderer_pet_sprites();
+    if (!ps || !ps->layer[LAYER_BODY].pixels) {
+        return false;
+    }
+    const int W = ps->layer[LAYER_BODY].hdr.width;
+    const int H = ps->layer[LAYER_BODY].hdr.height;
+    const size_t npx = (size_t)W * H;
+
+    if (s_canvas == NULL || s_canvas_w != W || s_canvas_h != H) {
+        if (s_canvas) {
+            heap_caps_free(s_canvas);
+            // The old buffer is gone — make sure no stale LVGL render can
+            // dereference it via s_pet_img if we fail below.
+            s_pet_img.data = NULL;
+            s_pet_img.data_size = 0;
+        }
+        s_canvas = heap_caps_malloc(npx * 4, MALLOC_CAP_SPIRAM);
+        if (!s_canvas) {
+            s_canvas_w = s_canvas_h = 0;
+            return false;
+        }
+        s_canvas_w = W;
+        s_canvas_h = H;
+    }
+    memset(s_canvas, 0, npx * 4);   // fully transparent
+
+    for (int L = 0; L < LAYER_COUNT; L++) {       // back -> front
+        const sprite_t *s = &ps->layer[L];
+        if (!s->pixels) {
+            continue;
+        }
+        int ox, oy;
+        anchor_for(ps, L, &ox, &oy);
+        uint8_t entry;
+        const palette_t *pal = tint_for(L, pet, &entry);
+        const int sw = s->hdr.width, sh = s->hdr.height;
+        const uint8_t *fr = s->pixels;            // frame 0, [gray,alpha]
+
+        for (int yy = 0; yy < sh; yy++) {
+            int cy = oy + yy;
+            if (cy < 0 || cy >= H) {
+                continue;
+            }
+            for (int xx = 0; xx < sw; xx++) {
+                int cx = ox + xx;
+                if (cx < 0 || cx >= W) {
+                    continue;
+                }
+                const uint8_t *p = fr + ((size_t)yy * sw + xx) * 2;
+                uint8_t gray = p[0], a = p[1];
+                if (a == 0) {
+                    continue;
+                }
+                uint16_t c = pal ? renderer_tint_rgb565(pal, entry, gray)
+                                 : renderer_gray_rgb565(gray);
+                uint8_t r = (c >> 8) & 0xF8; r |= r >> 5;
+                uint8_t g = (c >> 3) & 0xFC; g |= g >> 6;
+                uint8_t b = (c << 3) & 0xF8; b |= b >> 5;
+
+                uint32_t *dst = &s_canvas[(size_t)cy * W + cx];
+                uint32_t d = *dst;
+                uint8_t da = (d >> 24) & 0xFF;
+                if (a == 255 || da == 0) {
+                    *dst = ((uint32_t)a << 24) | ((uint32_t)r << 16)
+                         | ((uint32_t)g << 8) | b;
+                } else {
+                    // Straight-alpha src-over with a semi-transparent dst:
+                    //   oa = a + da*(1-a)              (<=255 for valid a)
+                    //   out = (src*a + dst*da*(1-a)) / oa
+                    // Weighting dst by da and dividing by oa (not 255) is
+                    // required, else colours go too dark at AA edges.
+                    uint32_t ia = 255u - a;
+                    uint8_t dr = (d >> 16) & 0xFF;
+                    uint8_t dg = (d >> 8) & 0xFF;
+                    uint8_t db = d & 0xFF;
+                    uint32_t dw = (uint32_t)da * ia / 255u;   // dst weight
+                    uint32_t oa = (uint32_t)a + dw;
+                    if (oa == 0) {
+                        *dst = 0;
+                    } else {
+                        uint8_t orr = (uint8_t)(((uint32_t)r * a + dr * dw) / oa);
+                        uint8_t og  = (uint8_t)(((uint32_t)g * a + dg * dw) / oa);
+                        uint8_t ob  = (uint8_t)(((uint32_t)b * a + db * dw) / oa);
+                        *dst = (oa << 24) | ((uint32_t)orr << 16)
+                             | ((uint32_t)og << 8) | ob;
+                    }
+                }
+            }
+        }
+    }
+    return true;
+}
+
 void renderer_draw_pet(const Pet *pet, int x, int y)
 {
-    (void)pet;  // genes/colors/animations honored at step 5 phase ④
-    lv_obj_t *body = lv_obj_create(lv_screen_active());
-    lv_obj_set_size(body, 128, 128);
-    lv_obj_set_pos(body, x, y);
-    lv_obj_set_style_radius(body, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(body, lv_color_hex(0xf5d76e), 0);
-    lv_obj_set_style_border_width(body, 0, 0);
+    if (pet == NULL) {
+        return;
+    }
+    if (renderer_pet_sprites() == NULL) {
+        renderer_load_pet_sprites(pet);
+    }
+    if (!compose_pet(pet)) {
+        // Load/compose failed (e.g. assets not flashed yet). Show ONE
+        // reusable placeholder — never leak a new lv_obj per call.
+        if (s_pet_obj) {
+            lv_obj_del(s_pet_obj);
+            s_pet_obj = NULL;
+        }
+        if (s_placeholder_obj == NULL) {
+            s_placeholder_obj = lv_obj_create(lv_screen_active());
+            lv_obj_set_size(s_placeholder_obj, 128, 128);
+            lv_obj_set_style_radius(s_placeholder_obj, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_color(s_placeholder_obj,
+                                      lv_color_hex(0xf5d76e), 0);
+            lv_obj_set_style_border_width(s_placeholder_obj, 0, 0);
+        }
+        lv_obj_set_pos(s_placeholder_obj, x, y);
+        return;
+    }
+    if (s_placeholder_obj) {            // compose succeeded — drop fallback
+        lv_obj_del(s_placeholder_obj);
+        s_placeholder_obj = NULL;
+    }
+
+    s_pet_img.header.magic  = LV_IMAGE_HEADER_MAGIC;
+    s_pet_img.header.cf     = LV_COLOR_FORMAT_ARGB8888;
+    s_pet_img.header.w      = s_canvas_w;
+    s_pet_img.header.h      = s_canvas_h;
+    s_pet_img.header.stride = s_canvas_w * 4;
+    s_pet_img.data          = (const uint8_t *)s_canvas;
+    s_pet_img.data_size     = (uint32_t)s_canvas_w * s_canvas_h * 4;
+
+    if (s_pet_obj == NULL) {
+        s_pet_obj = lv_image_create(lv_screen_active());
+        lv_image_set_antialias(s_pet_obj, false);  // crisp pixel art
+    }
+    lv_image_set_src(s_pet_obj, &s_pet_img);
+    if (s_canvas_w > 0) {                           // ~64 -> ~128 (§5.4)
+        lv_image_set_scale(s_pet_obj, (256 * 128) / s_canvas_w);
+    }
+    lv_obj_set_pos(s_pet_obj, x, y);
 }
