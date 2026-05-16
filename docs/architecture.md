@@ -425,20 +425,31 @@ single-device experience reads as a toy rather than a tech demo. Concretely:
   blink fires every few seconds, and care actions briefly switch the body to
   `eat` / `play` / `sleep` / `clean` states. The pet visibly breathes or
   drifts within its area, never holds a static frame.
+  - ✓ idle frame cycling at 5 fps (`2a11c48`)
+  - pending: eye blink (needs `blink` eye animation art)
+  - pending: per-care body state overrides (needs `eat`/`sleep`/`play`/`clean` body art)
 - **Vary.** Fresh hatches get random genes within their valid ranges; palettes
   have multiple meaningful entries. Two devices' default pets should be
   unmistakably different at first glance.
+  - ✓ random gene seeding at hatch + back-fill migration for zero-gene pets (`714e45c`)
+  - pending: multi-entry palettes (art-side)
 - **Care visibly.** Each care action plays a short audio cue from the ES8311
   codec in addition to the transient animation state. Resolves the §11 sound
   design question by forcing a concrete choice (synth vs. sampled).
+  - ✓ Feed: 5-item picker, food sprite drops on screen, hunger restored after 1.5 s (`69c4ce2`)
+  - ✓ Rest: dim overlay + animated "Z z z" for 6 s, energy restored (`7167ae8`)
+  - pending: Play (scope-deferred), Clean (needs shower art), audio cues (audio component still stubbed)
 - **Look like a toy.** Pixel-art bitmap font replaces Montserrat; stat bars
   are styled (rounded ends, restore-fill animation); care buttons carry icons
   instead of text labels; the background is a scene with a floor rather than
   flat navy.
+  - ✓ UNSCII pixel font as project default, sharp-cornered stat bars, pixel-bordered care buttons (`4e23612`)
+  - pending: icon-only care buttons, background scene, restore-fill bar animation
 - **Art coverage.** Multiple body / eye / mouth / ear / pattern / accessory
   shapes per layer (`gene_spec.md` allows 8 per layer + 16 palette entries).
   Without this, gene variation has nothing to express no matter how good the
   renderer is.
+  - parallel session — additions land independently as the art track produces them.
 
 8. **ESP-NOW discovery.** Two devices detect each other and play a 👋 animation. Make-or-break milestone.
 9. **Shared canvas, no interaction.** Two devices show one pet walking across both screens. Position sync working.
