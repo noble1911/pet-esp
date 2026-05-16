@@ -435,19 +435,29 @@ uint16_t renderer_tint_rgb565(const palette_t *pal, uint8_t entry,
     return pal->rgb565[(entry % pal->entries) * pal->ramp + shade];
 }
 
-// ---- Composition (build-order step 5 phase ④) ------------------------
+// ---- Composition (build-order step 5 phase ④ + polish-gate "move") ----
 //
 // Back-to-front src-over alpha blend of the loaded, gene-tinted layers
-// into an ARGB8888 buffer (LVGL needs per-pixel alpha). Frame 0 only —
-// the ~5 fps animation timer is a later build step; §5 permits a static
-// placeholder. Layers are placed body-relative: body & pattern at (0,0),
-// upper layers at their PANC anchor. Out-of-canvas pixels are clipped.
+// into an ARGB8888 buffer (LVGL needs per-pixel alpha). Each layer's
+// frame index is `s_anim_frame % layer.num_frames`, so layers with
+// different frame counts loop independently from a single global tick.
+// Layers are placed body-relative: body & pattern at (0,0), upper layers
+// at their PANC anchor. Out-of-canvas pixels are clipped.
 
 static uint32_t *s_canvas;          // ARGB8888 (0xAARRGGBB), PSRAM
 static int       s_canvas_w, s_canvas_h;
 static lv_image_dsc_t s_pet_img;
 static lv_obj_t *s_pet_obj;
 static lv_obj_t *s_placeholder_obj;   // shown only on load/compose failure
+
+// Animation state (polish-gate "move"). LVGL timer drives composition at
+// ~5 fps per architecture §5.5. Latched Pet lets the timer re-compose
+// without the caller's pointer needing to outlive renderer_draw_pet.
+#define ANIM_PERIOD_MS 200          // 5 fps
+static lv_timer_t *s_anim_timer;
+static uint8_t     s_anim_frame;
+static Pet         s_anim_pet;
+static bool        s_anim_pet_valid;
 
 static void anchor_for(const pet_sprites_t *ps, int layer,
                        int *ox, int *oy)
@@ -523,7 +533,12 @@ static bool compose_pet(const Pet *pet)
         uint8_t entry;
         const palette_t *pal = tint_for(L, pet, &entry);
         const int sw = s->hdr.width, sh = s->hdr.height;
-        const uint8_t *fr = s->pixels;            // frame 0, [gray,alpha]
+        // Per-layer frame: each layer loops at its own length from the
+        // shared s_anim_frame, so 2-frame body and 4-frame blink coexist.
+        const uint8_t bpp = format_bpp(s->hdr.format);
+        const uint8_t nf  = s->hdr.num_frames ? s->hdr.num_frames : 1;
+        const uint8_t fi  = s_anim_frame % nf;
+        const uint8_t *fr = s->pixels + (size_t)fi * sw * sh * bpp;
 
         for (int yy = 0; yy < sh; yy++) {
             int cy = oy + yy;
@@ -580,6 +595,24 @@ static bool compose_pet(const Pet *pet)
     return true;
 }
 
+// LVGL timer callback — advance frame, re-compose into s_canvas, invalidate
+// the LVGL image so it redraws. Runs on the LVGL task under its mutex, so
+// it serializes naturally with renderer_draw_pet (which holds the same
+// mutex via renderer_lock). No-op until renderer_draw_pet has latched a
+// pet and built the image object.
+static void anim_tick(lv_timer_t *t)
+{
+    (void)t;
+    if (!s_anim_pet_valid || s_pet_obj == NULL || s_canvas == NULL) {
+        return;
+    }
+    s_anim_frame++;
+    if (!compose_pet(&s_anim_pet)) {
+        return;
+    }
+    lv_obj_invalidate(s_pet_obj);
+}
+
 void renderer_draw_pet(const Pet *pet, int x, int y)
 {
     if (pet == NULL) {
@@ -628,4 +661,12 @@ void renderer_draw_pet(const Pet *pet, int x, int y)
         lv_image_set_scale(s_pet_obj, (256 * 128) / s_canvas_w);
     }
     lv_obj_set_pos(s_pet_obj, x, y);
+
+    // Latch a Pet snapshot for the animation timer to re-compose from.
+    // Pet is small (< 256 B per architecture §4.1) so the copy is cheap.
+    s_anim_pet       = *pet;
+    s_anim_pet_valid = true;
+    if (s_anim_timer == NULL) {
+        s_anim_timer = lv_timer_create(anim_tick, ANIM_PERIOD_MS, NULL);
+    }
 }
