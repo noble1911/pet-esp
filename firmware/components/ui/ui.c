@@ -24,11 +24,74 @@ static const char *s_bar_labels[NEED_COUNT] = {
     "Hunger", "Happiness", "Energy", "Hygiene"
 };
 
+// Sleep view — overlay + animated "Zzz" floating above the pet for a few
+// seconds after Rest is pressed. Pure UI state; pet_state still ticks
+// normally underneath. Body sprite keeps its idle bob, which reads as a
+// sleeping creature breathing.
+#define SLEEP_VIEW_MS 6000
+
+static lv_obj_t   *s_sleep_overlay;
+static lv_obj_t   *s_sleep_zzz;
+static lv_timer_t *s_sleep_end_timer;
+
+static void sleep_view_clear(void)
+{
+    if (s_sleep_overlay) { lv_obj_del(s_sleep_overlay); s_sleep_overlay = NULL; }
+    if (s_sleep_zzz)     { lv_obj_del(s_sleep_zzz);     s_sleep_zzz = NULL; }
+    if (s_sleep_end_timer) {
+        lv_timer_del(s_sleep_end_timer);
+        s_sleep_end_timer = NULL;
+    }
+}
+
+static void sleep_end_cb(lv_timer_t *t) { (void)t; sleep_view_clear(); }
+
+static void sleep_view_enter(void)
+{
+    if (s_sleep_overlay) {           // already sleeping → restart the timer
+        if (s_sleep_end_timer) {
+            lv_timer_reset(s_sleep_end_timer);
+        }
+        return;
+    }
+    lv_obj_t *scr = lv_screen_active();
+
+    // Translucent dim over the pet area only (keeps bars + buttons clear).
+    s_sleep_overlay = lv_obj_create(scr);
+    lv_obj_set_size(s_sleep_overlay, 368, 240);
+    lv_obj_set_pos(s_sleep_overlay, 0, 100);
+    lv_obj_set_style_bg_color(s_sleep_overlay, lv_color_hex(0x000020), 0);
+    lv_obj_set_style_bg_opa(s_sleep_overlay, LV_OPA_60, 0);
+    lv_obj_set_style_border_width(s_sleep_overlay, 0, 0);
+    lv_obj_set_style_radius(s_sleep_overlay, 0, 0);
+    lv_obj_remove_flag(s_sleep_overlay, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Floating "Z z z" label, animated upward + repeated.
+    s_sleep_zzz = lv_label_create(scr);
+    lv_label_set_text(s_sleep_zzz, "Z z z");
+    lv_obj_set_style_text_color(s_sleep_zzz, lv_color_hex(0xa0c8ff), 0);
+    lv_obj_set_style_text_font(s_sleep_zzz, &lv_font_unscii_16, 0);
+    lv_obj_set_pos(s_sleep_zzz, 200, 150);
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_sleep_zzz);
+    lv_anim_set_values(&a, 150, 110);            // float up 40 px
+    lv_anim_set_duration(&a, 1500);
+    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_y);
+    lv_anim_start(&a);
+
+    s_sleep_end_timer = lv_timer_create(sleep_end_cb, SLEEP_VIEW_MS, NULL);
+    lv_timer_set_repeat_count(s_sleep_end_timer, 1);
+}
+
 // Care action callbacks. Each restores its need and immediately refreshes
-// the bars — don't wait the up-to-10s for the next periodic tick.
+// the bars — don't wait the up-to-10s for the next periodic tick. Rest
+// also flips on the sleep overlay for a few seconds (polish-gate C-Rest).
 static void on_feed_cb(lv_event_t *e)  { (void)e; pet_state_feed();  ui_refresh_stats(); }
 static void on_play_cb(lv_event_t *e)  { (void)e; pet_state_play();  ui_refresh_stats(); }
-static void on_rest_cb(lv_event_t *e)  { (void)e; pet_state_rest();  ui_refresh_stats(); }
+static void on_rest_cb(lv_event_t *e)  { (void)e; pet_state_rest();  sleep_view_enter(); ui_refresh_stats(); }
 static void on_clean_cb(lv_event_t *e) { (void)e; pet_state_clean(); ui_refresh_stats(); }
 
 // Pixel-art aesthetic: sharp corners (radius 0), thin solid borders on
