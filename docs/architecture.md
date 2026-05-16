@@ -396,9 +396,11 @@ pet-project/
     preview.py
   docs/
     architecture.md     (this file)
+    design.md           visual & UX direction (polish-gate authority)
     gene_spec.md
     radio_protocol.md
     sprite_format.md
+    references/         mood-board screenshots (gitignored if heavy)
 ```
 
 ---
@@ -440,12 +442,12 @@ single-device experience reads as a toy rather than a tech demo. Concretely:
   - ✓ Feed: 5-item picker, food sprite drops on screen, hunger restored after 1.5 s (`69c4ce2`)
   - ✓ Rest: dim overlay + animated "Z z z" for 6 s, energy restored (`7167ae8`)
   - pending: Play (scope-deferred), Clean (needs shower art), audio cues (audio component still stubbed)
-- **Look like a toy.** Pixel-art bitmap font replaces Montserrat; stat bars
-  are styled (rounded ends, restore-fill animation); care buttons carry icons
-  instead of text labels; the background is a scene with a floor rather than
-  flat navy.
+- **Look like a toy.** See `docs/design.md` for the full visual identity
+  and layout. Short version: a scene around the pet (not a void), an icon
+  vocabulary in place of text labels, a compact stat strip plus an action
+  dock, and a corner menu. Tamagotchi-Uni as the primary reference.
   - ✓ UNSCII pixel font as project default, sharp-cornered stat bars, pixel-bordered care buttons (`4e23612`)
-  - pending: icon-only care buttons, background scene, restore-fill bar animation
+  - pending: see `design.md` §9 implementation tracks (L → I → S → M → F → X)
 - **Art coverage.** Multiple body / eye / mouth / ear / pattern / accessory
   shapes per layer (`gene_spec.md` allows 8 per layer + 16 palette entries).
   Without this, gene variation has nothing to express no matter how good the

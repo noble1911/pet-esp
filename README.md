@@ -55,6 +55,7 @@ python random_grid.py    # save a 4x4 PNG of random pets
 
 ## Sub-specs
 
+- [docs/design.md](docs/design.md) — visual & UX direction; polish-gate authority
 - [docs/gene_spec.md](docs/gene_spec.md) — 8-byte gene vector + breeding
 - [docs/radio_protocol.md](docs/radio_protocol.md) — ESP-NOW beacon / handshake / sync
 - [docs/sprite_format.md](docs/sprite_format.md) — on-device `.bin` sprite format
