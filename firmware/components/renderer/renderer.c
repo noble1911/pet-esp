@@ -459,6 +459,112 @@ static uint8_t     s_anim_frame;
 static Pet         s_anim_pet;
 static bool        s_anim_pet_valid;
 
+// Pet movement state. Reactions and idle breathing oscillate around the
+// base (x, y) captured at the most recent renderer_draw_pet call.
+static int  s_pet_base_x;
+static int  s_pet_base_y;
+static bool s_movement_active;
+
+static void start_idle_breathe(void);
+
+static void anim_back_to_base_y_cb(lv_anim_t *a)
+{
+    (void)a;
+    if (!s_pet_obj) return;
+    lv_obj_set_y(s_pet_obj, s_pet_base_y);
+    start_idle_breathe();
+}
+
+static void anim_back_to_base_x_cb(lv_anim_t *a)
+{
+    (void)a;
+    if (!s_pet_obj) return;
+    lv_obj_set_x(s_pet_obj, s_pet_base_x);
+}
+
+static void start_idle_breathe(void)
+{
+    if (!s_pet_obj) return;
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_pet_obj);
+    lv_anim_set_values(&a, s_pet_base_y, s_pet_base_y - 3);
+    lv_anim_set_duration(&a, 1100);
+    lv_anim_set_playback_duration(&a, 1100);
+    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_y);
+    lv_anim_start(&a);
+}
+
+static void react_hop(void)
+{
+    if (!s_pet_obj) return;
+    lv_anim_delete(s_pet_obj, (lv_anim_exec_xcb_t)lv_obj_set_y);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_pet_obj);
+    lv_anim_set_values(&a, s_pet_base_y, s_pet_base_y - 14);
+    lv_anim_set_duration(&a, 140);
+    lv_anim_set_playback_duration(&a, 200);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_y);
+    lv_anim_set_completed_cb(&a, anim_back_to_base_y_cb);
+    lv_anim_start(&a);
+}
+
+static void react_wiggle(void)
+{
+    if (!s_pet_obj) return;
+    lv_anim_delete(s_pet_obj, (lv_anim_exec_xcb_t)lv_obj_set_x);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_pet_obj);
+    lv_anim_set_values(&a, s_pet_base_x - 6, s_pet_base_x + 6);
+    lv_anim_set_duration(&a, 120);
+    lv_anim_set_playback_duration(&a, 120);
+    lv_anim_set_repeat_count(&a, 3);
+    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_x);
+    lv_anim_set_completed_cb(&a, anim_back_to_base_x_cb);
+    lv_anim_start(&a);
+}
+
+static void react_shake(void)
+{
+    if (!s_pet_obj) return;
+    lv_anim_delete(s_pet_obj, (lv_anim_exec_xcb_t)lv_obj_set_x);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_pet_obj);
+    lv_anim_set_values(&a, s_pet_base_x - 4, s_pet_base_x + 4);
+    lv_anim_set_duration(&a, 55);
+    lv_anim_set_playback_duration(&a, 55);
+    lv_anim_set_repeat_count(&a, 7);
+    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_x);
+    lv_anim_set_completed_cb(&a, anim_back_to_base_x_cb);
+    lv_anim_start(&a);
+}
+
+void renderer_pet_react(pet_reaction_t kind)
+{
+    switch (kind) {
+    case REACT_HOP:    react_hop();    break;
+    case REACT_WIGGLE: react_wiggle(); break;
+    case REACT_SHAKE:  react_shake();  break;
+    case REACT_NONE:
+    default:           break;
+    }
+}
+
+// Tap-the-pet handler — same primitive as a feed-hop; rewards user for
+// poking at the toy. Discoverable via finger; no on-screen affordance
+// needed (the pet itself is the affordance).
+static void pet_tap_cb(lv_event_t *e)
+{
+    (void)e;
+    react_hop();
+}
+
 static void anchor_for(const pet_sprites_t *ps, int layer,
                        int *ox, int *oy)
 {
@@ -655,12 +761,25 @@ void renderer_draw_pet(const Pet *pet, int x, int y)
     if (s_pet_obj == NULL) {
         s_pet_obj = lv_image_create(lv_screen_active());
         lv_image_set_antialias(s_pet_obj, false);  // crisp pixel art
+        // Make the pet itself tappable. LVGL images aren't clickable by
+        // default — this is what wires up the "tap the pet to make it hop".
+        lv_obj_add_flag(s_pet_obj, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(s_pet_obj, pet_tap_cb, LV_EVENT_CLICKED, NULL);
     }
     lv_image_set_src(s_pet_obj, &s_pet_img);
     if (s_canvas_w > 0) {                           // ~64 -> ~128 (§5.4)
         lv_image_set_scale(s_pet_obj, (256 * 128) / s_canvas_w);
     }
+    s_pet_base_x = x;
+    s_pet_base_y = y;
     lv_obj_set_pos(s_pet_obj, x, y);
+
+    // Restart idle breathing around the new base position. lv_anim_delete
+    // first so a previous run from an old base doesn't keep oscillating
+    // against stale coordinates.
+    lv_anim_delete(s_pet_obj, (lv_anim_exec_xcb_t)lv_obj_set_y);
+    start_idle_breathe();
+    s_movement_active = true;
 
     // Latch a Pet snapshot for the animation timer to re-compose from.
     // Pet is small (< 256 B per architecture §4.1) so the copy is cheap.

@@ -112,6 +112,19 @@ uint16_t renderer_gray_rgb565(uint8_t gray);   // untinted layers
 // call site. Caller must hold renderer_lock().
 void renderer_draw_pet(const Pet *pet, int x, int y);
 
+// Personality animations (polish-gate "Move"). The pet hops in response
+// to a tap, reacts to each care action with a distinct movement, and
+// breathes gently while idle. All anims oscillate around the base (x, y)
+// recorded by the most recent renderer_draw_pet call.
+typedef enum {
+    REACT_NONE   = 0,
+    REACT_HOP    = 1,   // small vertical jump (feed, tap-the-pet)
+    REACT_WIGGLE = 2,   // X oscillation, playful (play)
+    REACT_SHAKE  = 3,   // rapid X tremor, shorter throw (clean)
+} pet_reaction_t;
+
+void renderer_pet_react(pet_reaction_t kind);
+
 #ifdef __cplusplus
 }
 #endif

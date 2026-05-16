@@ -120,6 +120,7 @@ static void food_eat_complete_cb(lv_timer_t *t)
     (void)t;
     food_cleanup_dropped();
     pet_state_feed();
+    renderer_pet_react(REACT_HOP);
     ui_refresh_stats();
 }
 
@@ -197,9 +198,9 @@ static void food_picker_show(void)
 // for Feed) and immediately refreshes the bars. Rest also flips on the
 // sleep overlay.
 static void on_feed_cb(lv_event_t *e)  { (void)e; food_picker_show(); }
-static void on_play_cb(lv_event_t *e)  { (void)e; pet_state_play();  ui_refresh_stats(); }
+static void on_play_cb(lv_event_t *e)  { (void)e; pet_state_play();  renderer_pet_react(REACT_WIGGLE); ui_refresh_stats(); }
 static void on_rest_cb(lv_event_t *e)  { (void)e; pet_state_rest();  sleep_view_enter(); ui_refresh_stats(); }
-static void on_clean_cb(lv_event_t *e) { (void)e; pet_state_clean(); ui_refresh_stats(); }
+static void on_clean_cb(lv_event_t *e) { (void)e; pet_state_clean(); renderer_pet_react(REACT_SHAKE); ui_refresh_stats(); }
 
 static lv_obj_t *make_stat_bar(lv_obj_t *parent, const char *name,
                                int y, uint32_t color)
