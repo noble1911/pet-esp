@@ -7,6 +7,7 @@
 #include <string.h>
 #include <time.h>
 #include "esp_log.h"
+#include "esp_random.h"
 #include "nvs.h"
 
 static const char *TAG = "pet_state";
@@ -39,6 +40,16 @@ static bool s_have_pet = false;
 enum { ACC_HUNGER, ACC_HAPPINESS, ACC_ENERGY, ACC_HYGIENE, ACC_COUNT };
 static uint32_t s_decay_acc[ACC_COUNT];
 
+// Roll all 8 genes uniformly within their valid ranges (gene_spec.md
+// GENE_MAX). Out-of-range values clamp at render time, so this is safe
+// even if the per-byte modulus is later widened.
+static void pet_roll_genes(void)
+{
+    for (int i = 0; i < 8; i++) {
+        s_pet.genes[i] = (uint8_t)(esp_random() % PET_GENE_MAX[i]);
+    }
+}
+
 static void pet_hatch(void)
 {
     memset(&s_pet, 0, sizeof(s_pet));
@@ -51,6 +62,9 @@ static void pet_hatch(void)
     s_pet.energy    = 100;
     s_pet.hygiene   = 100;
     s_pet.last_tick = (uint32_t)time(NULL);
+    s_pet.birth_timestamp = s_pet.last_tick;
+    s_pet.pet_id    = ((uint64_t)esp_random() << 32) | esp_random();
+    pet_roll_genes();
     s_have_pet = true;
 }
 
@@ -67,6 +81,21 @@ void pet_state_init(void)
         if (s_pet.stage == PET_STAGE_EGG) {
             s_pet.stage = PET_STAGE_BABY;
             pet_state_save(&s_pet);
+        }
+        // Migration: NVS blobs from before random-gene seeding stored all
+        // zeros. Roll a fresh vector so the existing pet isn't trapped in
+        // the (single-shape, palette-entry-0) corner of the gene space.
+        bool zero_genes = true;
+        for (int i = 0; i < 8; i++) {
+            if (s_pet.genes[i] != 0) { zero_genes = false; break; }
+        }
+        if (zero_genes) {
+            pet_roll_genes();
+            if (s_pet.pet_id == 0) {
+                s_pet.pet_id = ((uint64_t)esp_random() << 32) | esp_random();
+            }
+            pet_state_save(&s_pet);
+            ESP_LOGI(TAG, "migrated: rolled fresh gene vector");
         }
         ESP_LOGI(TAG, "loaded from NVS: stage=%d H=%d Hp=%d E=%d Hy=%d",
                  s_pet.stage, s_pet.hunger, s_pet.happiness,
