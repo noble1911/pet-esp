@@ -29,6 +29,11 @@ CONFIG_COMPILER_OPTIMIZATION_PERF=y
 # 1 kHz tick for smooth UI / animation timing (architecture §5.5)
 CONFIG_FREERTOS_HZ=1000
 
+# Main task stack — default 3584 B overflows once the step-5 renderer
+# threads its 512 B path buffers through 7-layer composition called from
+# ui_init. 8 KB has comfortable headroom for the LVGL widget calls too.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
 # NVS holds the single Pet blob (architecture §4.1)
 CONFIG_NVS_ENCRYPTION=n
 

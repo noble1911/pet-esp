@@ -43,6 +43,9 @@ static void pet_hatch(void)
 {
     memset(&s_pet, 0, sizeof(s_pet));
     s_pet.version   = PET_SCHEMA_VERSION;
+    // Skip the egg phase for now — the renderer's asset library only has
+    // baby+ art, and the egg→baby hatching transition is step 7's job.
+    s_pet.stage     = PET_STAGE_BABY;
     s_pet.hunger    = 100;
     s_pet.happiness = 100;
     s_pet.energy    = 100;
@@ -59,8 +62,15 @@ void pet_state_init(void)
         // resetting last_tick avoids a billion-second elapsed jump that
         // would instantly zero every need.
         s_pet.last_tick = (uint32_t)time(NULL);
-        ESP_LOGI(TAG, "loaded from NVS: H=%d Hp=%d E=%d Hy=%d",
-                 s_pet.hunger, s_pet.happiness, s_pet.energy, s_pet.hygiene);
+        // Migration: NVS blobs from before the baby-on-hatch fix carry
+        // stage=egg, but the renderer has no egg art. Bump to baby in place.
+        if (s_pet.stage == PET_STAGE_EGG) {
+            s_pet.stage = PET_STAGE_BABY;
+            pet_state_save(&s_pet);
+        }
+        ESP_LOGI(TAG, "loaded from NVS: stage=%d H=%d Hp=%d E=%d Hy=%d",
+                 s_pet.stage, s_pet.hunger, s_pet.happiness,
+                 s_pet.energy, s_pet.hygiene);
     } else {
         pet_hatch();
         pet_state_save(&s_pet);

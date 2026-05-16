@@ -28,7 +28,11 @@ static palette_t s_pal_eye;
 #define ANCHOR_MAGIC  "PANC"
 #define PALETTE_MAGIC "PPAL"
 #define MAX_SHAPES    16     // shapes per (stage,layer); gene clamps into this
-#define PATH_MAX_LEN  192
+// Big enough for GCC's worst-case format-truncation analysis: a parent dir
+// path plus a NAME_MAX (255) filename plus ".bin" can theoretically be 512+.
+// In practice every path we build is short ("/assets/baby/body/round/idle.bin"
+// ≈ 35 chars); buffer is over-sized so -Werror=format-truncation accepts it.
+#define PATH_MAX_LEN  512
 
 // pet_stage_t -> directory name (mirrors forge_common.STAGES / architecture).
 static const char *const STAGE_DIR[] = {
