@@ -1,4 +1,4 @@
-// renderer — SH8601 AMOLED + LVGL display, SD sprite loader, and the
+// renderer — SH8601 AMOLED + LVGL display, LittleFS sprite loader, and the
 // back-to-front layered/tinted pet composition.
 //
 // References: architecture.md §5, docs/sprite_format.md.
@@ -54,7 +54,8 @@ void renderer_init(void);
 bool renderer_lock(uint32_t timeout_ms);
 void renderer_unlock(void);
 
-// TODO(build-order:5): load a stage's sprite library from SD into PSRAM.
+// TODO(build-order:5): load a stage's sprite library from the LittleFS
+// `assets` partition into PSRAM.
 bool renderer_load_pet_sprites(const Pet *pet);
 
 // Draw the pet at (x, y). Step 3 is a placeholder circle that ignores

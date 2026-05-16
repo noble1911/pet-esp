@@ -1,7 +1,9 @@
 # Phase A partition layout, matched to Waveshare's 05_LVGL_WITH_RAM example.
-# 16 MB flash supports far more; revisit when the app grows past ~2 MB or when
-# in-flash sprite assets land (architecture.md §2 persistence note).
-# Name,   Type, SubType, Offset,  Size, Flags
-nvs,      data, nvs,     ,         0x6000,
-phy_init, data, phy,     ,         0x1000,
-factory,  app,  factory, ,         3M,
+# 16 MB flash. `assets` is the flash-resident sprite library for the MVP
+# (architecture.md §2/§5 — SD deferred to the extended library). Revisit
+# sizes when the app grows past ~2 MB or the asset library outgrows 1 MB.
+# Name,   Type, SubType,  Offset,  Size,     Flags
+nvs,      data, nvs,      ,        0x6000,
+phy_init, data, phy,      ,        0x1000,
+factory,  app,  factory,  ,        3M,
+assets,   data, littlefs, ,        0x100000,

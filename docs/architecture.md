@@ -36,7 +36,7 @@ Relevant specs:
 - **Framework:** native ESP-IDF (`idf.py`) pinned to the **5.3.x LTS line**. Recommended IDE is VS Code with the Espressif ESP-IDF extension. v6.x is *not* supported until Waveshare publishes a BSP release that's been tested against it — internal API drift between 5.3 and 6.0 breaks BSP 1.1.3 in ways that can't be patched in one place. Arduino-ESP32 is no longer a documented fallback.
 - **Board support:** Waveshare's published BSP (`waveshare/esp32_s3_touch_amoled_1_8`) is consumed as a managed component. It provides init for the display (SH8601 over QSPI), touch (FT5x06), audio (ES8311 over I²S), SD/MMC, and the TCA9554 I/O expander.
 - **GUI:** LVGL (v9.x). Handles sprite blitting, animation, touch input. The BSP pins LVGL to `>=8,<10`, so 9.x is the target.
-- **Persistence:** ESP-IDF NVS for pet state and small key-values. Sprite assets and sound files are embedded in flash for MVP (steps 1–7); SD is reserved for the extended asset library once we outgrow flash.
+- **Persistence:** ESP-IDF NVS for pet state and small key-values. Sprite assets and sound files are flash-resident for the MVP (steps 1–7) — sprites ship in a LittleFS `assets` partition; SD is reserved for the extended asset library once we outgrow flash.
 - **Networking:** ESP-NOW for device-to-device. Wi-Fi STA and BLE reserved for later (phone companion app, OTA).
 - **Audio:** ES8311 codec via ESP-IDF audio drivers. Sample format and source (synth vs. PCM) still open — see §11.
 - **Build:** `idf.py` with ESP-IDF Component Manager. Sprite assets built by a separate Python tool (see §8).
@@ -157,7 +157,7 @@ Pet rendered at ~128×128 px in a 368×448 display.
 
 - Each part sprite ~64×64 px, 2–4 frames per animation.
 - All sprites for the active pet + visiting pet held in PSRAM (~500 KB typical).
-- Sprite library lives on SD; loaded into PSRAM on hatch/evolution/meeting.
+- Sprite library is flash-resident (a LittleFS `assets` partition) for the MVP (§2); loaded into PSRAM on hatch/evolution/meeting. SD hosts the extended library once flash is outgrown.
 
 ### 5.5 Animation states
 
@@ -411,7 +411,7 @@ Each step ends with a working, demoable artifact. Do not skip ahead.
 2. **LVGL hello world.** Minimal LVGL app drawing a rectangle following touch.
 3. **Pet exists.** Static placeholder sprite (a circle) drawn on screen.
 4. **Pet ticks.** Pet has hunger; debug overlay shows the number; decays over time; survives reboot via NVS.
-5. **Real renderer.** Layered sprite composition with tinting, loading from SD. Placeholder art OK.
+5. **Real renderer.** Layered sprite composition with tinting, loading from the flash LittleFS `assets` partition (SD deferred to the extended library — §2). Placeholder art OK.
 6. **UI loop.** Stat bars, feed button, basic menus, touch input. Now it's a pet.
 7. **Evolution.** Sprites change at life-stage transitions.
 8. **ESP-NOW discovery.** Two devices detect each other and play a 👋 animation. Make-or-break milestone.

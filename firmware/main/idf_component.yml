@@ -10,3 +10,6 @@ dependencies:
   idf:
     version: ">=5.3,<6"
   waveshare/esp32_s3_touch_amoled_1_8: "*"
+  # Flash-resident sprite library (architecture §2/§5): the firmware/assets
+  # tree is packed into the `assets` LittleFS partition at build time.
+  joltwallet/littlefs: "*"

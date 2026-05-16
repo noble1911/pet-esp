@@ -53,12 +53,11 @@ variants from a single asset.
 ## Anchors
 
 Each body shape defines anchor offsets (eyes, ears, mouth, tail, accessory)
-so upper layers compose correctly regardless of body proportions. Anchors
-ship as metadata alongside the sprites. Working format (sprite_forge owns
-the schema, renderer consumes it):
+so upper layers compose correctly regardless of body proportions. The
+human-authored source (sprite_forge owns the schema):
 
 ```
-parts/{stage}/{layer}/{shape}/anchors.json
+parts/{stage}/body/{shape}/anchors.json
 {
   "eyes":      [x, y],
   "mouth":     [x, y],
@@ -68,8 +67,20 @@ parts/{stage}/{layer}/{shape}/anchors.json
 }
 ```
 
+`build.py` does **not** ship this JSON. It emits a fixed binary sidecar
+`anchors.bin` next to the shape's `.bin` so the device needs no JSON parser:
+
+```
+offset  size  field
+0       4     magic   = "PANC"
+4       1     version = 1
+5       1     count   = 5
+6       N     count × { int16 x, int16 y }  little-endian
+              order: eyes, mouth, ears, tail, accessory
+```
+
 Coordinates are pixels relative to the body sprite's top-left, at the
-authored part size (~64×64).
+authored part size (~64×64); int16 is signed for future off-frame offsets.
 
 ## Animation states
 
@@ -86,5 +97,6 @@ sprite_forge/parts/{stage}/{layer}/{shape}/{animation}.png
 sprite_forge/palettes/*.png
 ```
 
-`build.py` composites/validates and emits `.bin` files into
-`firmware/assets/` (gitignored).
+`build.py` validates/packs and emits `.bin` (plus body `anchors.bin`) into
+`firmware/assets/` (gitignored). That tree is flashed to the device in a
+LittleFS `assets` partition (architecture §2/§5; SD deferred).
