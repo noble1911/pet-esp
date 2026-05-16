@@ -29,16 +29,18 @@ except ModuleNotFoundError:
 
 ROOT = Path(__file__).resolve().parent.parent
 ITEMS = ROOT / "sprite_forge" / "items"
-EMOTES = (ROOT / "sprite_forge" / "emotes" / "kenney_emotes-pack"
-          / "PNG" / "Pixel" / "Style 1")
+UI_DIR = ROOT / "sprite_forge" / "ui"
 OUT = ROOT / "firmware" / "components" / "ui" / "include" / "ui_icons.h"
 
 # (slot, source path) — slot order matches enum/array order in ui.c.
+# Heart / zzz / drop are hand-drawn via Piskel because the Kenney emote
+# pack ships them inside speech bubbles, which reads as "emoji caption"
+# rather than "stat icon" when sitting on the care dock.
 ICONS = [
-    ("hunger",    ITEMS / "apple.png"),
-    ("happiness", EMOTES / "emote_heart.png"),
-    ("energy",    EMOTES / "emote_sleep.png"),
-    ("hygiene",   EMOTES / "emote_drop.png"),
+    ("hunger",    ITEMS  / "apple.png"),
+    ("happiness", UI_DIR / "icon_heart.png"),
+    ("energy",    UI_DIR / "icon_sleep.png"),
+    ("hygiene",   UI_DIR / "icon_drop.png"),
 ]
 
 SIZES = [32, 64]   # px — stat strip / care dock
