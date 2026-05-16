@@ -43,6 +43,31 @@ typedef enum {
     LAYER_COUNT     = 7,
 } sprite_layer_t;
 
+// ---- Loaded sprite set (build-order step 5) --------------------------
+
+// One layer's sheet, resident in PSRAM. `pixels` is NULL when the pet has
+// no art for this layer — the loader skips missing layers, never fails.
+typedef struct {
+    sprite_header_t hdr;
+    uint8_t        *pixels;   // width*height*num_frames*bpp, in PSRAM
+} sprite_t;
+
+// Body-relative attach offsets, decoded from anchors.bin ("PANC").
+typedef struct {
+    int16_t eyes[2];
+    int16_t mouth[2];
+    int16_t ears[2];
+    int16_t tail[2];
+    int16_t accessory[2];
+} sprite_anchors_t;
+
+// The full set selected by a pet's genes + stage.
+typedef struct {
+    bool             valid;             // false until a successful load
+    sprite_t         layer[LAYER_COUNT];
+    sprite_anchors_t anchors;           // from the body shape
+} pet_sprites_t;
+
 // Bring up the AMOLED panel, FT5x06 touch, and the LVGL port via the
 // Waveshare BSP. After this, an LVGL `lv_display_t` is the active display
 // and a touch `lv_indev_t` is registered.
@@ -54,9 +79,15 @@ void renderer_init(void);
 bool renderer_lock(uint32_t timeout_ms);
 void renderer_unlock(void);
 
-// TODO(build-order:5): load a stage's sprite library from the LittleFS
-// `assets` partition into PSRAM.
+// Load the sprite set selected by pet->genes/stage from the LittleFS
+// `assets` partition into PSRAM. Frees any previously loaded set, skips
+// layers with no art, and returns true if at least the body loaded.
+// NOT reentrant — mutates one static set and uses static path scratch;
+// call from a single task only (the UI/render task). (build-order step 5)
 bool renderer_load_pet_sprites(const Pet *pet);
+
+// The currently loaded set, or NULL if nothing is loaded yet.
+const pet_sprites_t *renderer_pet_sprites(void);
 
 // Draw the pet at (x, y). Step 3 is a placeholder circle that ignores
 // `pet`; step 5 will compose layered, gene-tinted sprites from the same
