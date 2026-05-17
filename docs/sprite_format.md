@@ -78,12 +78,16 @@ the `body_color` palette; eyes use `eye_color`; mouth/accessory untinted.
 
 ## Anchors
 
-Each body shape defines anchor offsets (eyes, ears, mouth, tail, accessory)
-so upper layers compose correctly regardless of body proportions. The
-human-authored source (sprite_forge owns the schema):
+Each body shape defines per-layer pixel offsets that shift layer sprites
+into the correct position for that body. See
+[sprite_style_guide.md](sprite_style_guide.md) for the canonical
+coordinate grid layer sprites are drawn to; anchors translate from that
+grid onto a body whose face actually sits somewhere else.
+
+The human-authored source supports two equivalent forms:
 
 ```
-parts/{stage}/body/{shape}/anchors.json
+parts/{stage}/body/{shape}/anchors.json — array form (legacy v1)
 {
   "eyes":      [x, y],
   "mouth":     [x, y],
@@ -91,7 +95,21 @@ parts/{stage}/body/{shape}/anchors.json
   "tail":      [x, y],
   "accessory": [x, y]
 }
+
+— or object form (preferred since schema v2):
+{
+  "eyes":      { "x": -13, "y":  -2 },
+  "mouth":     { "x": -13, "y":  -2 },
+  "ears":      { "x": -13, "y":  -2 },
+  "tail":      { "x": -16, "y":   0 },
+  "accessory": { "x":   0, "y":   0 },
+  "pattern":   { "x":   0, "y":   0 }
+}
 ```
+
+`pattern` is optional and defaults to `(0, 0)` — the renderer masks
+pattern writes by body alpha automatically, so positioning is forgiving.
+Anchors may be negative (shift left/up).
 
 `build.py` does **not** ship this JSON. It emits a fixed binary sidecar
 `anchors.bin` next to the shape's `.bin` so the device needs no JSON parser:
@@ -99,14 +117,15 @@ parts/{stage}/body/{shape}/anchors.json
 ```
 offset  size  field
 0       4     magic   = "PANC"
-4       1     version = 1
-5       1     count   = 5
+4       1     version = 2          (v1 still readable on-device for legacy files)
+5       1     count   = 6          (v1: 5)
 6       N     count × { int16 x, int16 y }  little-endian
-              order: eyes, mouth, ears, tail, accessory
+              v2 order: eyes, mouth, ears, tail, accessory, pattern
+              v1 order: eyes, mouth, ears, tail, accessory
 ```
 
 Coordinates are pixels relative to the body sprite's top-left, at the
-authored part size (~64×64); int16 is signed for future off-frame offsets.
+authored part size (~64×64); int16 is signed for shifts in either direction.
 
 ## Animation states
 

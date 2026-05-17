@@ -206,7 +206,12 @@ done:
     return ok;
 }
 
-// Decode anchors.bin ("PANC", u8 ver=1, u8 count=5, count*(i16 x,i16 y)).
+// Decode anchors.bin ("PANC", u8 ver, u8 count, count*(i16 x,i16 y)).
+//
+// Supports v1 (count=5: eyes/mouth/ears/tail/accessory) and v2 (count=6:
+// adds `pattern` at the end). v1 files load with pattern defaulting to
+// (0, 0) — that's fine because the renderer masks pattern writes to body
+// alpha so positioning is forgiving (see compose_pet).
 static bool load_anchors(const char *path, sprite_anchors_t *out)
 {
     FILE *f = fopen(path, "rb");
@@ -218,20 +223,32 @@ static bool load_anchors(const char *path, sprite_anchors_t *out)
     if (fread(hdr, 1, sizeof(hdr), f) != sizeof(hdr)) {
         goto done;
     }
-    if (memcmp(hdr, ANCHOR_MAGIC, 4) != 0 || hdr[4] != 1 || hdr[5] != 5) {
-        ESP_LOGW(TAG, "%s: bad anchors header", path);
+    uint8_t ver = hdr[4];
+    uint8_t cnt = hdr[5];
+    bool v1 = (memcmp(hdr, ANCHOR_MAGIC, 4) == 0 && ver == 1 && cnt == 5);
+    bool v2 = (memcmp(hdr, ANCHOR_MAGIC, 4) == 0 && ver == 2 && cnt == 6);
+    if (!v1 && !v2) {
+        ESP_LOGW(TAG, "%s: bad anchors header (ver=%u cnt=%u)",
+                 path, ver, cnt);
         goto done;
     }
-    int16_t pts[10];
-    if (fread(pts, 1, sizeof(pts), f) != sizeof(pts)) {
+    int16_t pts[12];   // v2 uses 12 ints; v1 reads first 10.
+    size_t expect = (size_t)cnt * 4;   // bytes
+    if (fread(pts, 1, expect, f) != expect) {
         goto done;
     }
-    // Order: eyes, mouth, ears, tail, accessory (build.py ANCHOR_KEYS).
+    // Order: eyes, mouth, ears, tail, accessory[, pattern].
     memcpy(out->eyes,      &pts[0], 4);
     memcpy(out->mouth,     &pts[2], 4);
     memcpy(out->ears,      &pts[4], 4);
     memcpy(out->tail,      &pts[6], 4);
     memcpy(out->accessory, &pts[8], 4);
+    if (v2) {
+        memcpy(out->pattern, &pts[10], 4);
+    } else {
+        out->pattern[0] = 0;
+        out->pattern[1] = 0;
+    }
     ok = true;
 done:
     fclose(f);
@@ -774,13 +791,14 @@ static void anchor_for(const pet_sprites_t *ps, int layer,
     *ox = 0;
     *oy = 0;
     switch (layer) {
-    case LAYER_EYES:  *ox = ps->anchors.eyes[0];  *oy = ps->anchors.eyes[1];  break;
-    case LAYER_MOUTH: *ox = ps->anchors.mouth[0]; *oy = ps->anchors.mouth[1]; break;
-    case LAYER_EARS:  *ox = ps->anchors.ears[0];  *oy = ps->anchors.ears[1];  break;
-    case LAYER_TAIL:  *ox = ps->anchors.tail[0];  *oy = ps->anchors.tail[1];  break;
+    case LAYER_EYES:    *ox = ps->anchors.eyes[0];    *oy = ps->anchors.eyes[1];    break;
+    case LAYER_MOUTH:   *ox = ps->anchors.mouth[0];   *oy = ps->anchors.mouth[1];   break;
+    case LAYER_EARS:    *ox = ps->anchors.ears[0];    *oy = ps->anchors.ears[1];    break;
+    case LAYER_TAIL:    *ox = ps->anchors.tail[0];    *oy = ps->anchors.tail[1];    break;
+    case LAYER_PATTERN: *ox = ps->anchors.pattern[0]; *oy = ps->anchors.pattern[1]; break;
     case LAYER_ACCESSORY:
         *ox = ps->anchors.accessory[0]; *oy = ps->anchors.accessory[1]; break;
-    default: break;  // BODY, PATTERN -> (0,0)
+    default: break;  // BODY -> (0,0)
     }
 }
 
@@ -832,6 +850,17 @@ static bool compose_pet(const Pet *pet)
     }
     memset(s_canvas, 0, npx * 4);   // fully transparent
 
+    // Pre-compute pointer to the body's current frame so the pattern
+    // layer can mask itself against body alpha without re-resolving the
+    // body sprite per pixel. Body draws at canvas (0, 0) so its pixel
+    // coordinate space == canvas coordinate space.
+    const sprite_t *body_sp  = &ps->layer[LAYER_BODY];
+    const uint8_t   body_bpp = format_bpp(body_sp->hdr.format);
+    const uint8_t   body_nf  = body_sp->hdr.num_frames ? body_sp->hdr.num_frames : 1;
+    const uint8_t   body_fi  = s_anim_frame % body_nf;
+    const uint8_t  *body_fr  = body_sp->pixels +
+        (size_t)body_fi * body_sp->hdr.width * body_sp->hdr.height * body_bpp;
+
     for (int L = 0; L < LAYER_COUNT; L++) {       // back -> front
         const sprite_t *s = &ps->layer[L];
         if (!s->pixels) {
@@ -863,6 +892,17 @@ static bool compose_pet(const Pet *pet)
                 uint8_t gray = p[0], a = p[1];
                 if (a == 0) {
                     continue;
+                }
+                // Pattern decoration is painted ON the body — clip it
+                // to the body's silhouette so stripes/spots can't leak
+                // into transparent canvas areas around the body. Body
+                // is at canvas (0,0) so (cx, cy) IS the body pixel.
+                if (L == LAYER_PATTERN) {
+                    uint8_t body_a = body_fr[((size_t)cy * body_sp->hdr.width + cx)
+                                             * body_bpp + 1];
+                    if (body_a == 0) {
+                        continue;
+                    }
                 }
                 uint16_t c = pal ? renderer_tint_rgb565(pal, entry, gray)
                                  : renderer_gray_rgb565(gray);

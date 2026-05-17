@@ -37,9 +37,14 @@ except ModuleNotFoundError:
 
 # Anchor keys a body shape must define, in the canonical on-device order
 # (docs/sprite_format.md "Anchors"). This order IS the binary layout.
-ANCHOR_KEYS = ("eyes", "mouth", "ears", "tail", "accessory")
+# Order matters — this IS the binary layout of anchors.bin. `pattern`
+# was added in schema/binary version 2; older anchors.json files that
+# omit it (and read in the legacy [x, y] array form) default to (0, 0)
+# for pattern, which is harmless because the renderer masks pattern
+# writes to body alpha automatically.
+ANCHOR_KEYS = ("eyes", "mouth", "ears", "tail", "accessory", "pattern")
 ANCHOR_MAGIC = b"PANC"
-ANCHOR_VERSION = 1
+ANCHOR_VERSION = 2
 
 
 class BuildError(Exception):
@@ -86,30 +91,64 @@ def pack_png(path: Path) -> tuple[int, int, int, bytes]:
     return fw, fh, nframes, bytes(out)
 
 
+def _parse_anchor_point(path: Path, key: str, value) -> tuple[int, int]:
+    """Accept either the legacy `[x, y]` array form OR the named-object
+    `{"x": int, "y": int}` form (docs/sprite_style_guide.md §4). Both
+    return a plain (int, int) tuple.
+    """
+    if isinstance(value, list):
+        if len(value) != 2 or not all(isinstance(c, int) for c in value):
+            raise BuildError(
+                f"{path}: anchor '{key}' array form must be [int x, int y]")
+        return value[0], value[1]
+    if isinstance(value, dict):
+        if "x" not in value or "y" not in value:
+            raise BuildError(
+                f"{path}: anchor '{key}' object form needs 'x' and 'y' keys")
+        if (not isinstance(value["x"], int)
+                or not isinstance(value["y"], int)):
+            raise BuildError(
+                f"{path}: anchor '{key}' x/y must be ints")
+        return value["x"], value["y"]
+    raise BuildError(
+        f"{path}: anchor '{key}' must be [x, y] or {{x, y}}")
+
+
 def validate_anchors(path: Path, frame_w: int, frame_h: int) -> dict:
-    """Load + validate a body shape's anchors.json (the human-authored source)."""
+    """Load + validate a body shape's anchors.json (the human-authored source).
+
+    `pattern` is optional — if a legacy file omits it, default to (0, 0).
+    The renderer masks pattern writes to body alpha so a zero anchor is
+    a sensible no-op (style guide §4).
+    """
     if not path.exists():
         raise BuildError(f"missing {path} — body shapes require anchors.json "
-                         f"(docs/sprite_format.md)")
+                         f"(docs/sprite_format.md, docs/sprite_style_guide.md)")
     try:
         data = json.loads(path.read_text())
     except json.JSONDecodeError as e:
         raise BuildError(f"{path}: invalid JSON ({e})")
+    out: dict[str, tuple[int, int]] = {}
     for key in ANCHOR_KEYS:
-        if key not in data:
+        if key in data:
+            x, y = _parse_anchor_point(path, key, data[key])
+        elif key == "pattern":
+            # Legacy files (pre-v2) omit pattern — default zero.
+            x, y = 0, 0
+        else:
             raise BuildError(f"{path}: missing anchor '{key}'")
-        pt = data[key]
-        if (not isinstance(pt, list) or len(pt) != 2
-                or not all(isinstance(c, int) for c in pt)):
-            raise BuildError(f"{path}: anchor '{key}' must be [int x, int y]")
-        x, y = pt
-        if not (0 <= x <= frame_w and 0 <= y <= frame_h):
-            raise BuildError(
-                f"{path}: anchor '{key}' {pt} outside frame "
-                f"{frame_w}x{frame_h}")
+        # Anchors can legitimately be negative (shift LEFT/UP) to push a
+        # layer drawn at canonical position onto a body whose face sits
+        # off-centre. Range bounds are int16, matching the binary format.
         if not (-32768 <= x <= 32767 and -32768 <= y <= 32767):
-            raise BuildError(f"{path}: anchor '{key}' {pt} exceeds int16")
-    return data
+            raise BuildError(f"{path}: anchor '{key}' ({x},{y}) exceeds int16")
+        # Soft sanity: an anchor more than a frame away is almost certainly
+        # a typo. Warn but don't fail — leave room for unusual layouts.
+        if abs(x) > frame_w or abs(y) > frame_h:
+            print(f"  warn: {path} anchor '{key}' ({x},{y}) > frame "
+                  f"{frame_w}x{frame_h} — typo?")
+        out[key] = (x, y)
+    return out
 
 
 def write_anchors_bin(path: Path, anchors: dict) -> None:

@@ -53,12 +53,17 @@ typedef struct {
 } sprite_t;
 
 // Body-relative attach offsets, decoded from anchors.bin ("PANC").
+// File format v1 carried 5 entries (eyes, mouth, ears, tail, accessory);
+// v2 adds `pattern` at the end. v1 files load with pattern defaulting to
+// (0, 0) — pattern positioning works without an offset because the
+// renderer masks pattern writes to body alpha automatically.
 typedef struct {
     int16_t eyes[2];
     int16_t mouth[2];
     int16_t ears[2];
     int16_t tail[2];
     int16_t accessory[2];
+    int16_t pattern[2];
 } sprite_anchors_t;
 
 // The full set selected by a pet's genes + stage.
