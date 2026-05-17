@@ -12,7 +12,7 @@ view from anywhere.
 
 | Layer | Variants |
 |-------|----------|
-| Body  | chubby, pear, round, tall (**4 shapes**) |
+| Body  | chubby, pear, round, tall, wide (**5 shapes**) |
 | Eyes  | dot, happy, round, sleepy, star (**5 shapes**) |
 | Mouth | frown, open, round, smile (**4 shapes**) |
 | Ears  | floppy, pointy, round, tuft (**4 shapes**) |
@@ -38,10 +38,11 @@ Two reproducible 4×4 grids at known seeds:
 
 | Pet | Genes | Visual |
 |-----|-------|--------|
-| Chubby blush-pink | `0,5,1,8,2,1,0,3` | ![chubby](single_chubby_pink.png) |
+| Chubby blush-pink | `0,5,1,8,2,1,0,3`  | ![chubby](single_chubby_pink.png) |
 | Pear plum         | `3,8,4,12,3,2,1,1` | ![pear](single_pear_purple.png) |
 | Round warm brown  | `1,11,0,3,4,3,1,2` | ![round](single_round_brown.png) |
-| Tall mint sage    | `2,4,3,5,1,3,0,4` | ![tall](single_tall_mint.png) |
+| Tall mint sage    | `2,4,3,5,1,3,0,4`  | ![tall](single_tall_mint.png) |
+| Wide peach        | `4,2,3,10,0,3,2,0` | ![wide](single_wide_peach.png) |
 
 ## Regenerating
 
