@@ -165,6 +165,8 @@ static void food_cleanup_dropped(void)
     }
 }
 
+static void mood_silence(void);   // defined below in the mood-ticker block
+
 static void food_eat_complete_cb(lv_timer_t *t)
 {
     (void)t;
@@ -172,6 +174,7 @@ static void food_eat_complete_cb(lv_timer_t *t)
     pet_state_feed();
     renderer_pet_react(REACT_HOP);
     renderer_show_emote(EMOTE_AFFECTION, 2000);
+    mood_silence();
     ui_refresh_stats();
 }
 
@@ -240,15 +243,81 @@ static void food_picker_show(void)
     }
 }
 
+// --- Autonomous mood-emote ticker (architecture §7.5) -----------------
+// Drives renderer_show_emote based on pet_state_mood_emote() at intervals.
+// Cooldowns keep the pet from spamming the same bubble repeatedly —
+// the design goal is "the pet has opinions" not "the pet won't shut up".
+
+// Forward-declare so care callbacks can poke the cooldown directly
+// without reordering this whole file.
+static void mood_silence(void);
+
 // --- Care action callbacks --------------------------------------------
 // Care actions emit an emote bubble alongside the body reaction so the
 // pet "speaks" to the user about each interaction (architecture §7.4):
 // Feed -> affection heart (post-eat, fires from food_eat_complete_cb),
 // Play -> excited star, Rest -> sleepy zzz, Clean -> water drop.
+// Each care action also calls mood_silence() to suppress the autonomous
+// mood ticker briefly — a just-fed pet shouldn't immediately emote
+// hungry just because the mood tick fires a second later.
 static void on_feed_cb(lv_event_t *e)  { (void)e; food_picker_show(); }
-static void on_play_cb(lv_event_t *e)  { (void)e; pet_state_play();  renderer_pet_react(REACT_WIGGLE); renderer_show_emote(EMOTE_EXCITED, 2000); ui_refresh_stats(); }
-static void on_rest_cb(lv_event_t *e)  { (void)e; pet_state_rest();  sleep_view_enter(); renderer_show_emote(EMOTE_SLEEPY, 2000); ui_refresh_stats(); }
-static void on_clean_cb(lv_event_t *e) { (void)e; pet_state_clean(); renderer_pet_react(REACT_SHAKE); renderer_show_emote(EMOTE_THIRSTY, 2000); ui_refresh_stats(); }
+static void on_play_cb(lv_event_t *e)  { (void)e; pet_state_play();  renderer_pet_react(REACT_WIGGLE); renderer_show_emote(EMOTE_EXCITED, 2000); mood_silence(); ui_refresh_stats(); }
+static void on_rest_cb(lv_event_t *e)  { (void)e; pet_state_rest();  sleep_view_enter(); renderer_show_emote(EMOTE_SLEEPY, 2000); mood_silence(); ui_refresh_stats(); }
+static void on_clean_cb(lv_event_t *e) { (void)e; pet_state_clean(); renderer_pet_react(REACT_SHAKE); renderer_show_emote(EMOTE_THIRSTY, 2000); mood_silence(); ui_refresh_stats(); }
+
+// Tick / cooldown periods. MOOD_TICK_PERIOD_MS = how often we check;
+// MOOD_COOLDOWN_MS = min wall-clock interval between any two mood
+// bubbles. Same-emote suppression doubles that window to avoid an
+// "I'm hungry, I'm hungry, I'm hungry" loop while the user is busy.
+#define MOOD_TICK_PERIOD_MS  8000U
+#define MOOD_COOLDOWN_MS    25000U
+#define MOOD_DURATION_MS     2000U
+
+static lv_timer_t *s_mood_timer;
+static uint32_t    s_mood_last_show_ms;
+static uint8_t     s_mood_last_emote;
+
+static void mood_silence(void)
+{
+    // Stamp now as "last shown" without actually showing anything —
+    // suppresses the mood ticker for MOOD_COOLDOWN_MS.
+    s_mood_last_show_ms = lv_tick_get();
+}
+
+static void mood_tick_cb(lv_timer_t *t)
+{
+    (void)t;
+    // Honour the global cooldown.
+    if (s_mood_last_show_ms != 0
+        && lv_tick_elaps(s_mood_last_show_ms) < MOOD_COOLDOWN_MS) {
+        return;
+    }
+    uint8_t emote = pet_state_mood_emote();
+    if (emote == EMOTE_NONE) {
+        return;
+    }
+    // Same-emote suppression — wait 2x cooldown before re-firing the
+    // identical bubble. Different mood emotes can rotate freely.
+    if (emote == s_mood_last_emote
+        && s_mood_last_show_ms != 0
+        && lv_tick_elaps(s_mood_last_show_ms) < (MOOD_COOLDOWN_MS * 2)) {
+        return;
+    }
+    renderer_show_emote(emote, MOOD_DURATION_MS);
+    s_mood_last_emote   = emote;
+    s_mood_last_show_ms = lv_tick_get();
+    ESP_LOGI(TAG, "mood emote %u fired", (unsigned)emote);
+}
+
+static void mood_start(void)
+{
+    if (s_mood_timer != NULL) return;
+    // A short initial delay so the very first emote doesn't fire during
+    // boot/animation startup — the user gets to see the pet's idle pose
+    // first, then it starts emoting.
+    s_mood_timer = lv_timer_create(mood_tick_cb, MOOD_TICK_PERIOD_MS, NULL);
+    s_mood_last_show_ms = lv_tick_get();   // initial cooldown = first tick
+}
 
 // --- Scene background placeholders ------------------------------------
 // Real scene art (home.png) replaces these via Track S. For now they
@@ -697,6 +766,10 @@ void ui_init(void)
 
     renderer_unlock();
     ui_refresh_stats();
+    // Start the autonomous mood-emote ticker so the pet has opinions
+    // about its own state (architecture §7.5 — emotes driven by stats
+    // + personality, not just by direct user input).
+    mood_start();
     ESP_LOGI(TAG, "Track L layout up (stat strip + scene + action dock)");
 }
 

@@ -712,8 +712,11 @@ static lv_timer_t *s_emote_timer;
 // in firmware/components/ui/include/ui.h:
 //   2  = EMOTE_AFFECTION (heart bubble)
 //   3  = EMOTE_EXCITED   (star bubble)
+//   10 = EMOTE_HUNGRY    (exclamation — urgent need from mood logic)
 //   11 = EMOTE_SLEEPY    (zzz bubble)
 //   12 = EMOTE_THIRSTY   (drop bubble)
+//   22 = EMOTE_CONFUSED  (question — curious personality ambient)
+//   25 = EMOTE_SAD       (sad face — mood logic for very low stats)
 // Extend in lockstep when adding renderer_emote_* slots to the
 // converter. Sized to cover the full wire range (0..32) so adding new
 // IDs is just a designated-initializer line, never a table resize.
@@ -721,8 +724,11 @@ static lv_timer_t *s_emote_timer;
 static const lv_image_dsc_t *const s_emote_imgs[EMOTE_TABLE_SIZE] = {
     [2]  = &renderer_emote_affection_img,
     [3]  = &renderer_emote_excited_img,
+    [10] = &renderer_emote_hungry_img,
     [11] = &renderer_emote_sleepy_img,
     [12] = &renderer_emote_thirsty_img,
+    [22] = &renderer_emote_confused_img,
+    [25] = &renderer_emote_sad_img,
 };
 
 // Pixel offset of the bubble's top-left from the pet's base (x, y).

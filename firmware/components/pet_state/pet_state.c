@@ -135,6 +135,70 @@ const Pet *pet_state_get(void)
     return s_have_pet ? &s_pet : NULL;
 }
 
+// Mood-emote thresholds (architecture §7.5). CRITICAL is the urgency
+// floor — needs below this trigger an autonomous bubble asking for the
+// matching care action. HAPPY is the contentment ceiling — all needs
+// above this triggers an "I'm great" bubble. The band in between is
+// "personality territory" where the pet's personality gene picks an
+// ambient emote.
+#define MOOD_CRITICAL 30
+#define MOOD_HAPPY    75
+
+// emote_id_t values (mirror firmware/components/ui/include/ui.h enum).
+// Hard-coded here as raw ints to avoid pulling ui.h across the component
+// boundary — ui_state is the consumer, not the producer.
+#define EMOTE_NONE       0
+#define EMOTE_AFFECTION  2
+#define EMOTE_EXCITED    3
+#define EMOTE_HUNGRY    10
+#define EMOTE_SLEEPY    11
+#define EMOTE_THIRSTY   12
+#define EMOTE_CONFUSED  22
+#define EMOTE_SAD       25
+
+uint8_t pet_state_mood_emote(void)
+{
+    if (!s_have_pet) {
+        return EMOTE_NONE;
+    }
+    const Pet *p = &s_pet;
+
+    // 1. Critical-need urgency. The single lowest stat under the floor
+    //    decides which urgent bubble fires — that's the most pressing
+    //    request from the pet's perspective.
+    uint8_t lowest_v = MOOD_CRITICAL;
+    uint8_t lowest_emote = EMOTE_NONE;
+    if (p->hunger    < lowest_v) { lowest_v = p->hunger;    lowest_emote = EMOTE_HUNGRY;  }
+    if (p->energy    < lowest_v) { lowest_v = p->energy;    lowest_emote = EMOTE_SLEEPY;  }
+    if (p->hygiene   < lowest_v) { lowest_v = p->hygiene;   lowest_emote = EMOTE_THIRSTY; }
+    if (p->happiness < lowest_v) { lowest_v = p->happiness; lowest_emote = EMOTE_SAD;     }
+    if (lowest_emote != EMOTE_NONE) {
+        return lowest_emote;
+    }
+
+    // 2. Contentment ceiling — if every need is high, the pet beams.
+    if (p->hunger > MOOD_HAPPY && p->happiness > MOOD_HAPPY
+        && p->energy > MOOD_HAPPY && p->hygiene > MOOD_HAPPY) {
+        // Personality-tinted "I'm content" bubble. Sweet personality
+        // shows hearts; everyone else shows the universal sparkle.
+        uint8_t personality = p->genes[7];   // GENE_PERSONALITY
+        return (personality == 3 /*sweet*/) ? EMOTE_AFFECTION : EMOTE_EXCITED;
+    }
+
+    // 3. In-between band — personality-driven ambient emote (docs/
+    //    gene_spec.md §personality archetypes). Most personalities
+    //    don't pop ambient emotes — only the chatty/curious ones do.
+    //    Keeps the device from feeling noisy by default.
+    uint8_t personality = p->genes[7];
+    switch (personality) {
+    case 1: /* shy */     return EMOTE_CONFUSED;    // ❓ — uncertain
+    case 2: /* energetic */ return EMOTE_EXCITED;   // ✨
+    case 3: /* sweet */   return EMOTE_AFFECTION;   // 💕
+    case 7: /* curious */ return EMOTE_CONFUSED;    // ❓
+    default:              return EMOTE_NONE;        // quiet personalities
+    }
+}
+
 void pet_state_reset(void)
 {
     // Targeted erase of the pet blob key — leaves other future namespaces

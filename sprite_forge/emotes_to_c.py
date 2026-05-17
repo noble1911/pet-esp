@@ -48,6 +48,11 @@ EMOTES = [
     ("excited",   "emote_star"),
     ("sleepy",    "emote_sleep"),
     ("thirsty",   "emote_drop"),
+    # Mood-feedback bubbles driven by pet_state_mood_emote() — fired
+    # autonomously when needs cross thresholds (architecture §7.5).
+    ("hungry",    "emote_exclamation"),    # "!" — urgent need
+    ("sad",       "emote_faceSad"),
+    ("confused",  "emote_question"),       # "?" — for personality ambient
 ]
 
 OUT_SIZE = 48   # 3× the 16-px source; NEAREST keeps pixel edges crisp

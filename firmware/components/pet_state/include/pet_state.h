@@ -109,6 +109,20 @@ void pet_state_play(void);    // happiness
 void pet_state_rest(void);    // energy
 void pet_state_clean(void);   // hygiene
 
+// Return the most appropriate emote_id_t for the pet's current mood.
+// Pure function — no state changes, no side effects. Returns 0 (NONE)
+// when no need is urgent enough to warrant an autonomous bubble.
+//
+// Decision order (architecture §7.5):
+//   1. Any need < CRITICAL → matching urgent emote (HUNGRY/SLEEPY/etc)
+//   2. All needs > HAPPY → EXCITED/AFFECTION (content/sparkle)
+//   3. Personality-driven ambient (CONFUSED/AFFECTION/etc) — when needs
+//      are in the in-between band, the personality gene picks
+//   4. NONE if nothing rises above the floor
+//
+// The UI is responsible for cooldowns + actually rendering the bubble.
+uint8_t pet_state_mood_emote(void);
+
 // Evolution (architecture §4.3) -----------------------------------------
 
 // TODO(build-order:7): time/care-based stage transition with branching.
