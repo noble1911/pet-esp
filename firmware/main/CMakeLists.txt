@@ -3,7 +3,7 @@
 idf_component_register(
     SRCS "main.c"
     INCLUDE_DIRS "."
-    REQUIRES pet_state renderer radio ui audio esp_timer nvs_flash
+    REQUIRES pet_state renderer radio ui audio power esp_timer nvs_flash
 )
 
 # Pack the sprite_forge-built assets (firmware/assets — generated, gitignored)

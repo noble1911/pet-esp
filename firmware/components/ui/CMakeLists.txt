@@ -3,5 +3,5 @@
 idf_component_register(
     SRCS "ui.c"
     INCLUDE_DIRS "include"
-    REQUIRES pet_state renderer radio lvgl__lvgl
+    REQUIRES pet_state renderer radio power lvgl__lvgl
 )

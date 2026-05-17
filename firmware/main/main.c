@@ -26,6 +26,7 @@
 #include "radio.h"
 #include "ui.h"
 #include "audio.h"
+#include "power.h"
 
 static const char *TAG = "pet";
 
@@ -57,6 +58,10 @@ void app_main(void)
 
     pet_state_init();
     renderer_init();
+    // power_init must come AFTER renderer_init: the BSP brings up the
+    // shared I²C bus inside bsp_display_start() (called from renderer
+    // init). Without that, bsp_i2c_get_handle() returns NULL.
+    power_init();
     audio_init();
     ui_init();
     radio_init();

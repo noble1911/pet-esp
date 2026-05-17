@@ -28,6 +28,21 @@ BUTTONS = [
     "btn_close_raised",
     "icon_chart",
     "icon_close",
+    # Battery indicator (menu modal). 5 variants chosen by percent +
+    # charging state; the color ladder is the readable signal at 32 px:
+    #   empty  = outline only          (≤5 %)
+    #   low    = 1 red cell            (6-39 %)
+    #   mid    = 2 orange cells        (40-74 %)
+    #   high   = 3 green cells         (≥75 %)
+    #   charging = 3 yellow cells      (USB-C supplying battery, any %)
+    # Yellow only ever appears while charging, so colour alone signals
+    # the state without needing a bolt overlay (which is unreadable at
+    # this resolution).
+    "icon_battery_empty",
+    "icon_battery_low",
+    "icon_battery_mid",
+    "icon_battery_high",
+    "icon_battery_charging",
     # icon_cog / icon_menu / btn_menu_raised removed — replaced by a bare
     # bar-chart icon with an extended click area; matches the stat-icon
     # style and reads as "open stats panel" directly.
