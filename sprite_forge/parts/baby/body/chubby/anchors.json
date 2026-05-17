@@ -1,7 +1,8 @@
 {
-  "eyes": [0, 0],
-  "mouth": [0, 0],
-  "ears": [0, 0],
-  "tail": [0, 0],
-  "accessory": [0, 0]
+  "eyes":      { "x": 0, "y": 6 },
+  "mouth":     { "x": 0, "y": 6 },
+  "ears":      { "x": 0, "y": 7 },
+  "tail":      { "x": 0, "y": 0 },
+  "accessory": { "x": 0, "y": 6 },
+  "pattern":   { "x": 0, "y": 0 }
 }
