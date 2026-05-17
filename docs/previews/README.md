@@ -21,6 +21,19 @@ view from anywhere.
 | Body palette | 16 hand-authored pastel hues |
 | Eye palette  | 16 hand-authored saturated iris colors |
 
+## Scene + pet (what the device shows)
+
+The home scene background composited with a representative pet at the
+on-device coordinates (`PET_X=120, PET_Y=210`). Faint horizontal lines
+mark the stat-strip / scene / action-dock band boundaries. Generated
+by `sprite_forge/preview_scene.py`.
+
+![Scene with pet](scene_home_with_pet.png)
+
+The home scene art on its own (184x152 native):
+
+![Home scene native](scene_home_native.png)
+
 ## Variety showcase
 
 36 random pets at seed=42 (all 8 gene bytes randomised per cell):
