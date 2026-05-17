@@ -429,8 +429,10 @@ single-device experience reads as a toy rather than a tech demo. Concretely:
   drifts within its area, never holds a static frame.
   - ✓ idle frame cycling at 5 fps (`2a11c48`)
   - ✓ tap-the-pet hop + differentiated care reactions (hop/wiggle/shake) + idle breathe (`795ad86`)
+  - ✓ horizontal wander on the floor — random target every 2-3.5 s within `[56, 240]` object-space X, ease_in_out, pauses during wiggle/shake reactions (`33b474b`)
   - pending: eye blink (needs `blink` eye animation art)
   - pending: per-care body state overrides (needs `eat`/`sleep`/`play`/`clean` body art)
+  - pending: 2D wander (depth) — gated on Track S scene art with perspective
 - **Vary.** Fresh hatches get random genes within their valid ranges; palettes
   have multiple meaningful entries. Two devices' default pets should be
   unmistakably different at first glance.
@@ -441,7 +443,9 @@ single-device experience reads as a toy rather than a tech demo. Concretely:
   design question by forcing a concrete choice (synth vs. sampled).
   - ✓ Feed: 5-item picker, food sprite drops on screen, hunger restored after 1.5 s (`69c4ce2`)
   - ✓ Rest: dim overlay + animated "Z z z" for 6 s, energy restored (`7167ae8`)
-  - pending: Play (scope-deferred), Clean (needs shower art), audio cues (audio component still stubbed)
+  - ✓ Care-action emote bubbles: heart (Feed) / star (Play) / zzz (Rest) / drop (Clean), 2 s auto-dismiss, anchored above the pet's live position (`9e0cc1b`) — single-device slice of the §7.4 emote vocabulary; full system lands at build-order step 10.
+  - pending: Play body-state art (currently only the wiggle reaction + emote), Clean shower art, audio cues (audio component still stubbed)
+  - pending: mood-based emote selection from stats + personality (EM-4..7 in §7.4)
 - **Look like a toy.** See `docs/design.md` for the full visual identity
   and layout. Short version: a scene around the pet (not a void), an icon
   vocabulary in place of text labels, a compact stat strip plus an action
@@ -456,7 +460,7 @@ single-device experience reads as a toy rather than a tech demo. Concretely:
 
 8. **ESP-NOW discovery.** Two devices detect each other and play a 👋 animation. Make-or-break milestone.
 9. **Shared canvas, no interaction.** Two devices show one pet walking across both screens. Position sync working.
-10. **Emote system.** Tap emotes; both screens render bubbles; reactions fire.
+10. **Emote system.** Tap emotes; both screens render bubbles; reactions fire. (Single-device groundwork — converter, `renderer_show_emote`, care-action bubbles — landed during the polish gate, `9e0cc1b`. This step adds the wire sync, tap-emote UI, and mood-driven selection on top.)
 11. **Items in shared space.** Drag, drop, pick up, cross-device.
 12. **Mini-game + dance.** Synchronised activities.
 13. **Breeding.** Egg hatches into gene-mixed offspring.
