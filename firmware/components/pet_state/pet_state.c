@@ -135,6 +135,24 @@ const Pet *pet_state_get(void)
     return s_have_pet ? &s_pet : NULL;
 }
 
+void pet_state_reset(void)
+{
+    // Targeted erase of the pet blob key — leaves other future namespaces
+    // intact, unlike nvs_flash_erase() which nukes everything in NVS.
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_erase_key(h, NVS_KEY);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    // Drop banked decay so a fresh pet doesn't bleed needs from the
+    // previous one's accumulated time.
+    memset(s_decay_acc, 0, sizeof(s_decay_acc));
+    pet_hatch();
+    pet_state_save(&s_pet);
+    ESP_LOGI(TAG, "reset: rolled fresh pet");
+}
+
 // Bank elapsed seconds into a per-need accumulator and apply decay when it
 // crosses the period (keeping the remainder for next time). Returns true
 // if the value changed.

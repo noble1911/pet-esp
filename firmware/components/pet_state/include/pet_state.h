@@ -88,6 +88,13 @@ bool pet_state_save(const Pet *pet);
 
 const Pet *pet_state_get(void);  // current in-RAM pet (NULL if none)
 
+// Wipe the persisted Pet blob and re-hatch with a freshly-rolled gene
+// vector + new pet_id + all needs back to 100. Intended for development
+// / "test the variety" — exposed in the menu modal behind a confirmation
+// dialog. The caller is responsible for re-loading sprites and re-drawing
+// the pet on screen (genes drive both).
+void pet_state_reset(void);
+
 // Real-time model (architecture §4.2) -----------------------------------
 
 // Apply elapsed-time decay + evolution check using the RTC. Called on

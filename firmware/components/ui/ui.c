@@ -312,6 +312,116 @@ static void menu_close_cb(lv_event_t *e)
     if (s_menu_modal) { lv_obj_del(s_menu_modal); s_menu_modal = NULL; }
 }
 
+// --- Reset-pet confirmation -------------------------------------------
+// Destructive action — opening the dialog dims the screen and presents
+// a Cancel / Reset pair. "Reset" wipes the NVS pet blob, re-rolls genes,
+// reloads sprites, and re-paints the pet. The menu modal closes after
+// reset so the user immediately sees the new pet on the home scene.
+static lv_obj_t *s_reset_confirm;
+
+static void reset_confirm_dismiss(void)
+{
+    if (s_reset_confirm) { lv_obj_del(s_reset_confirm); s_reset_confirm = NULL; }
+}
+
+static void reset_confirm_cancel_cb(lv_event_t *e)
+{
+    (void)e;
+    reset_confirm_dismiss();
+}
+
+static void reset_confirm_yes_cb(lv_event_t *e)
+{
+    (void)e;
+    reset_confirm_dismiss();
+    if (s_menu_modal) { lv_obj_del(s_menu_modal); s_menu_modal = NULL; }
+    pet_state_reset();
+    const Pet *p = pet_state_get();
+    if (p) {
+        // Force a sprite reload — the new gene vector picks different
+        // body/eye/etc. shapes, so the cached set is stale.
+        renderer_load_pet_sprites(p);
+        renderer_draw_pet(p, PET_X, PET_Y);
+    }
+    ui_refresh_stats();
+    ESP_LOGI(TAG, "pet reset via menu");
+}
+
+static void reset_confirm_show_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_reset_confirm) return;
+    lv_obj_t *scr = lv_screen_active();
+
+    // Full-screen dim — also intercepts taps so the menu underneath
+    // doesn't accept stray input while the confirm is up.
+    s_reset_confirm = lv_obj_create(scr);
+    lv_obj_set_size(s_reset_confirm, SCREEN_W, SCREEN_H);
+    lv_obj_set_pos(s_reset_confirm, 0, 0);
+    lv_obj_set_style_bg_color(s_reset_confirm, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(s_reset_confirm, LV_OPA_70, 0);
+    lv_obj_set_style_border_width(s_reset_confirm, 0, 0);
+    lv_obj_set_style_radius(s_reset_confirm, 0, 0);
+    lv_obj_set_style_pad_all(s_reset_confirm, 0, 0);
+    lv_obj_remove_flag(s_reset_confirm, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Centred dialog box. 280×160 leaves comfortable margins on the
+    // 368×448 screen and keeps the buttons well inside the rounded
+    // corner mask.
+    static const int DLG_W = 280;
+    static const int DLG_H = 160;
+    lv_obj_t *box = lv_obj_create(s_reset_confirm);
+    lv_obj_set_size(box, DLG_W, DLG_H);
+    lv_obj_set_pos(box, (SCREEN_W - DLG_W) / 2, (SCREEN_H - DLG_H) / 2);
+    lv_obj_set_style_bg_color(box, lv_color_hex(UI_BG_CREAM), 0);
+    lv_obj_set_style_border_width(box, 2, 0);
+    lv_obj_set_style_border_color(box, lv_color_hex(UI_WOOD_DARK), 0);
+    lv_obj_set_style_radius(box, 6, 0);
+    lv_obj_set_style_pad_all(box, 0, 0);
+    lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *q = lv_label_create(box);
+    lv_label_set_text(q, "Reset pet?\nGenes + needs reroll.");
+    lv_obj_set_style_text_color(q, lv_color_hex(UI_TEXT_DARK), 0);
+    lv_obj_set_style_text_align(q, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(q, LV_ALIGN_TOP_MID, 0, 24);
+
+    // Cancel — wood-dark "go back". Reset — red "destructive". Both
+    // share the pixel-bordered chrome of the care buttons for
+    // consistency with the rest of the UI.
+    static const int BTN_W = 100;
+    static const int BTN_H = 40;
+    static const int BTN_Y = DLG_H - BTN_H - 16;
+
+    lv_obj_t *cancel = lv_button_create(box);
+    lv_obj_set_size(cancel, BTN_W, BTN_H);
+    lv_obj_set_pos(cancel, 16, BTN_Y);
+    lv_obj_set_style_radius(cancel, 4, 0);
+    lv_obj_set_style_bg_color(cancel, lv_color_hex(UI_WOOD_DARK), 0);
+    lv_obj_set_style_border_width(cancel, 2, 0);
+    lv_obj_set_style_border_color(cancel, lv_color_hex(UI_WOOD_DARK), 0);
+    lv_obj_set_style_shadow_width(cancel, 0, 0);
+    lv_obj_t *cl = lv_label_create(cancel);
+    lv_label_set_text(cl, "Cancel");
+    lv_obj_set_style_text_color(cl, lv_color_hex(UI_BG_CREAM), 0);
+    lv_obj_center(cl);
+    lv_obj_add_event_cb(cancel, reset_confirm_cancel_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *yes = lv_button_create(box);
+    lv_obj_set_size(yes, BTN_W, BTN_H);
+    lv_obj_set_pos(yes, DLG_W - BTN_W - 16, BTN_Y);
+    lv_obj_set_style_radius(yes, 4, 0);
+    lv_obj_set_style_bg_color(yes, lv_color_hex(0xc04040), 0);
+    lv_obj_set_style_border_width(yes, 2, 0);
+    lv_obj_set_style_border_color(yes, lv_color_hex(UI_WOOD_DARK), 0);
+    lv_obj_set_style_shadow_width(yes, 0, 0);
+    lv_obj_t *yl = lv_label_create(yes);
+    lv_label_set_text(yl, "Reset");
+    lv_obj_set_style_text_color(yl, lv_color_hex(UI_BG_CREAM), 0);
+    lv_obj_center(yl);
+    lv_obj_add_event_cb(yes, reset_confirm_yes_cb, LV_EVENT_CLICKED, NULL);
+}
+
 // One row of the stat list inside the menu modal: 32-px icon, label,
 // horizontal mini-bar, numeric value, all in a 368×56 slot.
 static void make_menu_stat_row(lv_obj_t *parent, int y, int need_idx,
@@ -469,6 +579,29 @@ static void menu_show(lv_event_t *e)
     make_menu_meta_row(s_menu_modal, meta_y + 8,
                        battery_icon_for(batt, charging),
                        "Battery", batt_buf);
+
+    // Reset Pet button — destructive, hence red + confirmation gate.
+    // Placed below the battery row, horizontally centred so it doesn't
+    // visually align with either the icon column (left) or value column
+    // (right) of the rows above; that asymmetry signals "this is a
+    // command, not data".
+    static const int RST_W = 180;
+    static const int RST_H = 40;
+    int rst_y = meta_y + 8 + ROW_H;
+    lv_obj_t *reset_btn = lv_button_create(s_menu_modal);
+    lv_obj_set_size(reset_btn, RST_W, RST_H);
+    lv_obj_set_pos(reset_btn, (SCREEN_W - RST_W) / 2, rst_y);
+    lv_obj_set_style_radius(reset_btn, 4, 0);
+    lv_obj_set_style_bg_color(reset_btn, lv_color_hex(0xc04040), 0);
+    lv_obj_set_style_border_width(reset_btn, 2, 0);
+    lv_obj_set_style_border_color(reset_btn, lv_color_hex(UI_WOOD_DARK), 0);
+    lv_obj_set_style_shadow_width(reset_btn, 0, 0);
+    lv_obj_set_style_translate_y(reset_btn, 2, LV_STATE_PRESSED);
+    lv_obj_t *rst_lbl = lv_label_create(reset_btn);
+    lv_label_set_text(rst_lbl, "Reset Pet");
+    lv_obj_set_style_text_color(rst_lbl, lv_color_hex(UI_BG_CREAM), 0);
+    lv_obj_center(rst_lbl);
+    lv_obj_add_event_cb(reset_btn, reset_confirm_show_cb, LV_EVENT_CLICKED, NULL);
 }
 
 // Stats-menu icon top-right — three ascending bars, same 32-px footprint
