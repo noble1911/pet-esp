@@ -14,4 +14,4 @@ Return to the shaded bunny:
 
 Both commands leave the NVS save partition untouched. Device port may change after reconnecting (`ls /dev/cu.*`). Binaries are gitignored and local-only; copy the entire bundle when moving machines. Check `SHA256SUMS` before using archived binaries. Normal source builds remain available through `./scripts/device.sh build`.
 
-The device was not connected when this bundle was produced; build, host interaction, visual and memory-safety checks passed, but this version has not yet been boot-tested on the ESP.
+This bundle has now been flashed to the ESP with verified data hashes. Boot checking confirmed saved-pet loading and display/touch/audio initialization without an observed crash during 20 seconds. Build, host interaction, visual and memory-safety checks also passed.
