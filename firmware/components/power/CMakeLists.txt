@@ -1,4 +1,4 @@
-# power — AXP2101 PMIC accessors (battery percent / charging state).
+# power — AXP2101 battery status, PWR short press and saved power-off.
 # Reuses the I²C bus the Waveshare BSP brings up in bsp_i2c_init().
 idf_component_register(
     SRCS "power.c"

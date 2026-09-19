@@ -1,5 +1,4 @@
-// power — AXP2101 PMIC accessors. Reports battery percent and charging
-// state for the device-status row in the menu modal.
+// power — AXP2101 battery status, PWR events and saved power-off.
 //
 // Architecture §1: the board has an AXP2101 for USB-C charging and rail
 // switching; the Waveshare BSP doesn't wrap it, so we talk to it
@@ -28,6 +27,12 @@ int power_battery_percent(void);
 // True while USB-C is supplying the battery. Distinct from "plugged in
 // but full" — that returns false here.
 bool power_is_charging(void);
+
+// Poll from the LVGL owner. True once per acknowledged short press.
+bool power_take_short_press(void);
+// Request PMIC power-off after saving. Next PWR press boots the saved pet.
+// True means the command was accepted, not proof the physical rails dropped.
+bool power_request_off(void);
 
 #ifdef __cplusplus
 }

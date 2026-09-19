@@ -19,6 +19,10 @@ bool renderer_lock(uint32_t ms) { (void)ms;return true; }
 void renderer_unlock(void) {}
 int power_battery_percent(void) { return 85; }
 bool power_is_charging(void) { return true; }
+static bool test_power_press, test_power_off_ok=true;
+static unsigned test_power_offs;
+bool power_take_short_press(void) {bool press=test_power_press;test_power_press=false;return press;}
+bool power_request_off(void) {test_power_offs++;return test_power_off_ok;}
 static sfx_id_t test_sfx;
 void audio_play(sfx_id_t f) {test_sfx=f;}
 static bool test_tune;
@@ -27,7 +31,8 @@ bool audio_play_tune(unsigned n) {test_tune=n<3;test_tune_choice=n;return test_t
 void audio_stop_tune(void) {test_tune=false;}
 bool audio_tune_playing(void) {return test_tune;}
 bool voice_make_tune(const Pet *p,const char *a) {(void)p;(void)a;test_compositions++;return true;}
-void audio_set_muted(bool m) { (void)m; }
+static bool test_audio_muted;
+void audio_set_muted(bool m) {test_audio_muted=m;}
 static bool test_boot, test_auto=true;
 static unsigned test_remarks, test_reactions;
 static pet_event_t test_event;
@@ -95,7 +100,7 @@ int main(void)
     lv_display_set_color_format(d,LV_COLOR_FORMAT_XRGB8888);
     lv_display_set_buffers(d,pixels,NULL,sizeof pixels,LV_DISPLAY_RENDER_MODE_DIRECT);lv_display_set_flush_cb(d,flush);
     lv_indev_t *input=lv_indev_create();lv_indev_set_type(input,LV_INDEV_TYPE_POINTER);lv_indev_set_read_cb(input,read_touch);
-    ui_init(); shot("home");
+    ui_init();test_power_press=true;advance(160);assert(s_view==HOME && test_power_offs==0);shot("home");
     s_voice_until=0;advance(80);lv_obj_update_layout(s_root);
     assert(lv_obj_has_flag(lv_obj_get_parent(s_caption_label),LV_OBJ_FLAG_HIDDEN));
     shot("home-idle");
@@ -560,7 +565,38 @@ int main(void)
     pet_state_tick(pet_state_get()->last_tick+179);assert(pet_state_get()->hunger==100);
     show(HOME);shot("fresh-pet");
     saved = snapshot; pet_state_init();
-    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; all eight traits, preview wraparound and unchanged genes/save; milestone foods, six coats without yellow eating patches, paced meals, fades, compact mic, cancel, failed saves and capped bonuses");
+    // Back works across the whole corner, not only the old 48px tile.
+    const int back_points[][2]={{2,2},{85,2},{2,73},{85,73},{44,38}};
+    const View back_views[]={FOOD,GAMES,SETTINGS,ALBUM,DECORATIONS,TREATS,PROFILE,TRAIT,RESET};
+    const View back_dest[]={HOME,HOME,HOME,REWARDS,REWARDS,FOOD,SETTINGS,PROFILE,SETTINGS};
+    for(unsigned v=0;v<sizeof back_views/sizeof back_views[0];v++) {
+        for(unsigned point=0;point<sizeof back_points/sizeof back_points[0];point++) {
+            show(back_views[v]);tap(back_points[point][0],back_points[point][1]);assert(s_view==back_dest[v]);
+        }
+    }
+    show(SETTINGS);shot("larger-back-button");bool auto_before=test_auto;
+    tap(80,91);assert(s_view==SETTINGS && test_auto!=auto_before); // adjacent row isn't stolen
+    test_auto=auto_before;
+    // A PWR short press saves before shutdown, cancels unfinished meals and
+    // silences voice/music. Failure at either stage always recovers awake.
+    test_voice=VOICE_READY;s_muted=false;audio_set_muted(false);show(FOOD);start_food(0,NULL);
+    Pet before_sleep=*pet_state_get();unsigned off_before=test_power_offs;
+    test_power_press=true;advance(160);assert(s_view==POWER_OFF && s_power_pending && !s_eating);
+    assert(!memcmp(&saved,&before_sleep,sizeof saved));assert(test_audio_muted && !s_talking);
+    shot("power-goodnight");advance(300);assert(test_power_offs==off_before+1 && s_power_sent);
+    advance(300);assert(test_power_offs==off_before+1); // never repeat the shutdown command
+    advance(1700);assert(s_view==HOME && !s_power_pending && !test_audio_muted);
+    assert(pet_state_get()->evolution_progress==before_sleep.evolution_progress);
+    assert(strstr(s_reaction_text,"Still awake"));shot("power-no-shutdown");
+    fail_save=true;test_power_press=true;advance(160);assert(s_view==HOME && !s_power_pending);
+    assert(test_power_offs==off_before+1 && strstr(s_reaction_text,"Couldn't save"));fail_save=false;
+    advance(900);test_power_off_ok=false;test_power_press=true;advance(600);
+    assert(s_view==HOME && !s_power_pending && strstr(s_reaction_text,"Couldn't sleep"));
+    assert(!test_audio_muted);test_power_off_ok=true;
+    advance(900);s_muted=true;audio_set_muted(true);test_power_press=true;advance(2100);
+    assert(s_view==HOME && test_audio_muted);s_muted=false;audio_set_muted(false);
+    assert(pet_state_get()->pet_id==before_sleep.pet_id && pet_state_get()->evolution_progress==before_sleep.evolution_progress);
+    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; all eight traits, preview wraparound and unchanged genes/save; milestone foods, six coats without yellow eating patches, paced meals, fades, compact mic, expanded back targets, PWR save/cancel/error recovery, cancel, failed saves and capped bonuses");
     lv_deinit();
     return 0;
 }

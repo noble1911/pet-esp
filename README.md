@@ -1,5 +1,7 @@
 # Little Meadow
 
+Controls: [Larger back target and PWR sleep](docs/back-power-v1.md) adds an easier top-left back button and saved power-off on a short PWR press. These changes await flashing and physical button testing.
+
 UI: [Speech and eating polish](docs/speech-polish-v1.md) adds a compact microphone, a tailed speech bubble and slower meals with correct coat colours.
 
 Voice: [Tiny Sprout](docs/creature-voice-v2.md) adds a stronger creature voice and short, playful replies. Sprout can chat using the existing Mac mini voice stack. Hold the small microphone button or BOOT to talk without leaving the pet screen. It uses Haiku and occasionally offers a little comment. Rename it, toggle Little chats and check Wi-Fi in Options. See [voice controls, setup and rollback](docs/voice-v1.md).

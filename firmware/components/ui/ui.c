@@ -25,7 +25,7 @@
 #define FOOD_DURATION_MS 2800
 #define FOOD_FADE_MS 200
 
-typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT, TREATS, REWARDS } View;
+typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT, TREATS, REWARDS, POWER_OFF } View;
 static View s_view;
 static lv_obj_t *s_root, *s_pet, *s_bars[4], *s_target, *s_counter;
 static lv_obj_t *s_dots[5], *s_hint, *s_sleep_bar;
@@ -43,6 +43,8 @@ static pixel_food_t s_food;
 static uint32_t s_started, s_hop_until, s_last_tick, s_party_fade_until;
 static unsigned s_hits, s_last_target;
 static bool s_eating, s_muted;
+static bool s_power_pending, s_power_sent;
+static uint32_t s_power_poll, s_power_at, s_power_ready_at;
 static unsigned s_profile_page, s_trait_gene, s_trait_variant;
 static unsigned s_album_page, s_hiding, s_weather_mode;
 static lv_obj_t *s_keepsakes[5], *s_keepsake_label;
@@ -181,9 +183,15 @@ static void microphone(lv_obj_t *parent)
 }
 static void header_to(const char *title,View back)
 {
-    lv_obj_t *b=button(s_root,24,22,48,48,0xffffff,nav_cb,back);
-    label(b,LV_SYMBOL_LEFT,0,11,48,true);
-    label(s_root,title,80,32,264,true);
+    // The whole top-left corner is a forgiving target; the inset tile is the
+    // visual affordance. Ends above the first Options row, without overlap.
+    lv_obj_t *hit=button(s_root,0,0,88,76,CREAM,nav_cb,back);
+    lv_obj_set_style_bg_opa(hit,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(hit,0,0);
+    lv_obj_t *tile=shape(hit,12,10,64,56,0xffffff,0);
+    lv_obj_set_style_radius(tile,10,0);lv_obj_set_style_border_width(tile,2,0);
+    lv_obj_set_style_border_color(tile,lv_color_hex(INK),0);
+    label(tile,LV_SYMBOL_LEFT,0,15,64,true);
+    label(s_root,title,94,32,250,true);
 }
 static void header(const char *title) {header_to(title,HOME);}
 static void room(bool night)
@@ -327,7 +335,7 @@ static void volume_cb(lv_event_t *e)
 }
 static const char *activity(void)
 {
-    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits","special treats","choosing stickers or gifts"}[s_view];
+    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits","special treats","choosing stickers or gifts","going to sleep"}[s_view];
 }
 static void talk_begin(void)
 {
@@ -420,8 +428,7 @@ static void trait_portrait(int x,int y,const Pet *p)
 }
 static void make_treats(void)
 {
-    lv_obj_t *back=button(s_root,24,22,48,48,0xffffff,nav_cb,FOOD);label(back,LV_SYMBOL_LEFT,0,11,48,true);
-    label(s_root,"Special treats",80,32,264,true);
+    header_to("Special treats",FOOD);
     s_hint=label(s_root,"Earn once, enjoy again and again!",16,83,336,false);
     for(unsigned i=0;i<PET_SPECIAL_FOOD_COUNT;i++) {
         const pet_special_food_t *f=pet_special_food(i);bool unlocked=pet_food_unlocked(pet_state_get(),i+3);
@@ -437,8 +444,7 @@ static void make_treats(void)
 static void make_profile(void)
 {
     const Pet *p=pet_state_get();char text[96];
-    lv_obj_t *back=button(s_root,24,22,48,48,0xffffff,nav_cb,SETTINGS);
-    label(back,LV_SYMBOL_LEFT,0,11,48,true);label(s_root,"My pet",80,32,264,true);
+    header_to("My pet",SETTINGS);
     trait_portrait(18,79,p);
     label(s_root,p->name,172,100,174,true);
     const char *stages[]={"Egg","Baby","Child","Teen","Grown-up","Elder"};
@@ -465,8 +471,7 @@ static void make_profile(void)
 static void make_trait(void)
 {
     const Pet *p=pet_state_get();const pet_trait_t *t=pet_trait(s_trait_gene);char text[80];
-    lv_obj_t *back=button(s_root,24,22,48,48,0xffffff,nav_cb,PROFILE);label(back,LV_SYMBOL_LEFT,0,11,48,true);
-    label(s_root,t->label,80,32,264,true);
+    header_to(t->label,PROFILE);
     label(s_root,t->values[s_trait_variant],24,86,320,true);
     bool mine=s_trait_variant==pet_trait_choice(p,s_trait_gene);
     label(s_root,mine?"This one is mine!":"Just looking - your pet stays the same",16,116,336,false);
@@ -826,10 +831,15 @@ static void show(View view)
     for(int i=0;i<4;i++) s_bars[i]=NULL;
     for(int i=0;i<5;i++) s_dots[i]=NULL;
     if(s_root) lv_obj_delete(s_root);
+    if(view!=POWER_OFF)s_power_pending=false;
     s_view=view; s_started=lv_tick_get(); s_hits=0; s_eating=false; s_hop_until=0;s_reaction_until=0;s_party_fade_until=0;
     s_root=shape(lv_screen_active(),0,0,368,448,CREAM,0);
     if(view==HOME) { make_home(); return; }
-    if(view==REWARDS) {make_rewards();
+    if(view==POWER_OFF) {
+        room(true);make_pet(82,128);
+        label(s_root,"See you soon!",24,22,320,true);
+        label(s_root,"Press PWR to wake me",24,370,320,false);
+    } else if(view==REWARDS) {make_rewards();
     } else if(view==TREATS) {make_treats();
     } else if(view==PROFILE) {make_profile();
     } else if(view==TRAIT) {make_trait();
@@ -944,9 +954,7 @@ static void show(View view)
         lv_obj_t *reset=button(s_root,34,397,300,44,PINK,nav_cb,RESET);
         label(reset,"Start fresh...",0,13,300,false);
     } else if(view==RESET) {
-        lv_obj_t *back=button(s_root,24,22,48,48,0xffffff,nav_cb,SETTINGS);
-        label(back,LV_SYMBOL_LEFT,0,11,48,true);
-        label(s_root,"Start fresh?",80,32,264,true);
+        header_to("Start fresh?",SETTINGS);
         label(s_root,"A new little beginning",24,96,320,true);
         label(s_root,"This replaces your pet with a new\nbaby named Sprout. Stars, stickers,\nroom gifts and chats start fresh.",24,148,320,false);
         label(s_root,"You cannot undo this on the toy.\nWi-Fi setup stays saved.",24,225,320,false);
@@ -985,9 +993,42 @@ static void refresh(void)
         lv_label_set_text(s_hint,v[low]<45?(const char*[]){"A snack would be lovely","Let's catch some stars!","Time for a little nap","Let's pop some bubbles!"}[low]:"Tap me for a cuddle");
     }
 }
+static void power_error(const char *text)
+{
+    show(HOME);audio_set_muted(s_muted);
+    snprintf(s_reaction_text,sizeof s_reaction_text,"%s",text);s_reaction_until=lv_tick_get()+5000;
+}
+static void start_power_off(void)
+{
+    // Persist only completed care. An unfinished activity is cancelled, never
+    // fast-forwarded into a reward. Failed saves leave the device awake.
+    if(!pet_state_save(pet_state_get())) {power_error("Couldn't save. Still awake! Try PWR again.");return;}
+    voice_cancel();audio_set_muted(true);s_talking=false;
+    show(POWER_OFF);
+    pixel_pet_render(&s_pet_art,pet_state_get(),PIXEL_SLEEP,0,PIXEL_APPLE);lv_obj_invalidate(s_pet_image);
+    s_power_pending=true;s_power_sent=false;s_power_at=lv_tick_get()+250;
+}
 static void frame(lv_timer_t *t)
 {
     (void)t; uint32_t now=lv_tick_get(), elapsed=now-s_started;
+    if(s_power_pending) {
+        if(!s_power_sent && (int32_t)(now-s_power_at)>=0) {
+            if(!power_request_off()) {power_error("Couldn't sleep. Please try PWR again.");return;}
+            s_power_sent=true;
+        }
+        // A responsive I2C bus does not guarantee the hardware powered down.
+        // Recover visibly if USB/board behaviour keeps the ESP running.
+        if(s_power_sent && (int32_t)(now-s_power_at)>=1500)
+            power_error("Still awake. Please try PWR again.");
+        return;
+    }
+    if(now-s_power_poll>=120) {
+        s_power_poll=now;
+        bool pressed=power_take_short_press();
+        if(pressed && (int32_t)(now-s_power_ready_at)>=0) {
+            s_power_ready_at=now+800;start_power_off();return;
+        }
+    }
     bool boot=voice_boot_pressed();
     if(boot!=s_boot_raw) { s_boot_raw=boot;s_boot_changed=now; }
     if(now-s_boot_changed>=80 && boot!=s_boot_down) {
@@ -1102,6 +1143,7 @@ void ui_init(void)
     if(!renderer_lock(0)) return;
     lv_obj_set_style_bg_color(lv_screen_active(),lv_color_hex(CREAM),0);
     lv_obj_remove_flag(lv_screen_active(),LV_OBJ_FLAG_SCROLLABLE);
+    s_power_ready_at=lv_tick_get()+1000;
     show(HOME); lv_timer_create(frame,40,NULL);
     renderer_unlock();
 }
