@@ -258,33 +258,84 @@ int main(void)
     show(BALL);tap(lv_obj_get_x(s_target)+48,lv_obj_get_y(s_target)+48);tap(48,46);advance(3000);
     assert(s_view==HOME && pet_state_get()->evolution_progress==play_before+1);
 
-    // Schema-1 progress grants all rewards retrospectively. Saving a cosmetic
-    // cannot spend stars or change identity, and failures don't alter live state.
-    Pet legacy=saved;legacy.evolution_progress=29;legacy.inventory[15]=0;
+    // Old single-gift saves load unchanged. New placements are additive and
+    // transactional; keep the legacy slot readable by rollback firmware.
+    Pet legacy=saved;legacy.evolution_progress=29;legacy.inventory[13]=0;legacy.inventory[14]=0;legacy.inventory[15]=101;
     saved=legacy;pet_state_init();assert(pet_sticker_count(pet_state_get())==5);
+    assert(pet_room_gifts(pet_state_get())==2);
     assert(pet_decoration_unlocked(pet_state_get(),1));assert(!pet_decoration_unlocked(pet_state_get(),2));
-    assert(!pet_equip_decoration(2));assert(!pet_equip_decoration(999));assert(!pet_equip_decoration(-2));
-    assert(pet_equipped_decoration(pet_state_get())==-1);
-    assert(pet_equip_decoration(1));pet_state_init();assert(pet_equipped_decoration(pet_state_get())==1);
-    assert(pet_state_get()->pet_id==legacy.pet_id && pet_state_get()->evolution_progress==29);
-    fail_save=true;assert(!pet_equip_decoration(0));assert(pet_equipped_decoration(pet_state_get())==1);fail_save=false;
-    show(DECORATIONS);shot("room-gifts-locked");tap(290,170);assert(s_view==DECORATIONS);
-    assert(strstr(lv_label_get_text(s_hint),"1 more"));
-    tap(80,170);assert(s_view==HOME && pet_equipped_decoration(pet_state_get())==0);shot("room-flowers");
-    show(DECORATIONS);shot("plain-room-before");tap(90,372);shot("plain-room-after");assert(s_view==HOME && pet_equipped_decoration(pet_state_get())==-1);
+    assert(!pet_toggle_decoration(2));assert(!pet_toggle_decoration(999));assert(!pet_equip_decoration(-2));
+    fail_save=true;assert(!pet_toggle_decoration(0));assert(pet_room_gifts(pet_state_get())==2);fail_save=false;
+    show(HOME);tap(50,275);assert(s_view==REWARDS);shot("treasures-menu");
+    tap(180,325);assert(s_view==DECORATIONS);shot("room-gifts-locked");
+    tap(290,170);assert(s_view==DECORATIONS && strstr(lv_label_get_text(s_hint),"1 more"));
+    tap(80,170);assert(s_view==DECORATIONS && pet_room_gifts(pet_state_get())==3);
+    pet_state_init();assert(pet_room_gifts(pet_state_get())==3);
+    assert(pet_state_get()->inventory[15]==100 && pet_state_get()->pet_id==legacy.pet_id && pet_state_get()->evolution_progress==29);
+    fail_save=true;tap(80,170);assert(pet_room_gifts(pet_state_get())==3);
+    assert(strstr(lv_label_get_text(s_hint),"Couldn't save"));fail_save=false;
+    tap(267,372);assert(s_view==HOME);shot("room-two-gifts");
+    show(DECORATIONS);tap(80,170);assert(pet_room_gifts(pet_state_get())==2);
+    tap(90,372);assert(s_view==DECORATIONS && pet_room_gifts(pet_state_get())==0);
     pet_state_play();show(PARTY);shot("new-room-gift");tap(100,400);assert(s_view==DECORATIONS);
     assert(pet_sticker_count(pet_state_get())==6 && pet_decoration_unlocked(pet_state_get(),2));
+    tap(48,46);assert(s_view==REWARDS);tap(180,190);assert(s_view==ALBUM);
     s_album_page=0;show(ALBUM);tap(310,365);assert(s_album_page==1);shot("stickers-next");
-    tap(70,175);assert(strstr(lv_label_get_text(s_hint),"5 more"));
+    tap(70,175);assert(strstr(lv_label_get_text(s_hint),"5 more") && s_view==ALBUM && pet_wall_sticker(pet_state_get())==-1);
     tap(60,365);assert(s_album_page==0);tap(60,365);assert(s_album_page==2);tap(310,365);assert(s_album_page==0);
+    fail_save=true;tap(70,175);assert(s_view==ALBUM && pet_wall_sticker(pet_state_get())==-1);
+    assert(strstr(lv_label_get_text(s_hint),"Couldn't save"));fail_save=false;
+    tap(70,175);assert(s_view==HOME && pet_wall_sticker(pet_state_get())==0 && s_keepsake_until);
+    advance(80);assert(s_face==PIXEL_EAT);shot("apple-sticker-play");
+    pet_state_init();assert(pet_wall_sticker(pet_state_get())==0);
+    uint32_t sticker_stars=pet_state_get()->evolution_progress;
+    advance(4100);assert(!s_keepsake_until);tap(53,107);assert(s_keepsake_until);
+    assert(pet_state_get()->evolution_progress==sticker_stars);
+    tap(50,275);assert(s_view==REWARDS && !s_keepsake_until);advance(4200);
+    tap(180,190);assert(s_view==ALBUM);tap(180,418);assert(s_view==HOME && pet_wall_sticker(pet_state_get())==-1);
+    assert(!pet_set_wall_sticker(-2) && !pet_set_wall_sticker(18) && !pet_set_wall_sticker(6));
     saved.evolution_progress=90;pet_state_init();assert(pet_sticker_count(pet_state_get())==18);
-    for(unsigned i=0;i<6;i++)assert(pet_decoration_unlocked(pet_state_get(),i));
+    for(unsigned i=0;i<6;i++){assert(pet_decoration_unlocked(pet_state_get(),i));assert(pet_toggle_decoration(i));}
+    assert(pet_room_gifts(pet_state_get())==63);pet_state_init();assert(pet_room_gifts(pet_state_get())==63);
     for(unsigned i=0;i<3;i++){s_album_page=i;show(ALBUM);char name[40];snprintf(name,sizeof name,"stickers-page-%u",i+1);shot(name);}
-    show(DECORATIONS);shot("room-gifts");tap(290,280);assert(s_view==HOME && pet_equipped_decoration(pet_state_get())==5);
-    s_voice_until=0;shot("room-trophy");
+    show(DECORATIONS);shot("room-all-gifts-selected");tap(267,372);assert(s_view==HOME);s_voice_until=0;shot("room-all-gifts");
+    // All eighteen stickers activate via real touch. Replays are bounded, do
+    // not consume rewards, and leaving/starting voice cancels the animation.
+    Pet before_keepsakes=*pet_state_get();
+    for(unsigned i=0;i<PET_STICKER_COUNT;i++) {
+        s_album_page=i/6;show(ALBUM);tap(76+(i%3)*108,180+((i%6)/3)*100);
+        assert(s_view==HOME && pet_wall_sticker(pet_state_get())==(int)i && s_keepsake_until);
+        advance(80);assert(s_face==keepsake_actions[i].pose && test_sfx==keepsake_actions[i].sound);
+        char name[40];snprintf(name,sizeof name,"sticker-play-%02u",i);shot(name);
+        if(getenv("PET_CAPTURE_ANIMATIONS") && i==6)for(unsigned frame_no=0;frame_no<24;frame_no++) {
+            advance(100);snprintf(name,sizeof name,"flutter-%02u",frame_no);shot(name);
+        }
+        tap(53,107);assert(s_keepsake_until);show(REWARDS);assert(!s_keepsake_until);advance(100);
+    }
+    assert(pet_state_get()->evolution_progress==before_keepsakes.evolution_progress);
+    assert(pet_state_get()->hunger==before_keepsakes.hunger && pet_state_get()->happiness==before_keepsakes.happiness);
+    assert(pet_state_get()->energy==before_keepsakes.energy && pet_state_get()->hygiene==before_keepsakes.hygiene);
+    assert(pet_state_get()->pet_id==before_keepsakes.pet_id && pet_room_gifts(pet_state_get())==63);
+    // Each placed gift is reachable without touching the pet or a care menu.
+    const int gift_taps[6][2]={{27,232},{184,95},{102,289},{299,161},{264,293},{344,222}};
+    for(unsigned i=0;i<6;i++) {
+        show(HOME);tap(gift_taps[i][0],gift_taps[i][1]);assert(s_view==HOME && s_keepsake_until);
+    }
+    test_voice=VOICE_LISTENING;advance(80);assert(!s_keepsake_until && s_face==PIXEL_LISTEN);test_voice=VOICE_READY;
+    show(HOME);s_voice_until=0;shot("room-sticker-and-gifts");
     saved.evolution_progress=UINT32_MAX;pet_state_init();assert(pet_sticker_count(pet_state_get())==18);
     assert(!pet_decoration_unlocked(pet_state_get(),6));
-    saved.inventory[15]=255;pet_state_init();assert(pet_equipped_decoration(pet_state_get())==-1);
+    saved.inventory[14]=255;saved.inventory[15]=255;saved.inventory[13]=255;pet_state_init();
+    assert(pet_room_gifts(pet_state_get())==0 && pet_wall_sticker(pet_state_get())==-1);
+    saved.inventory[14]=191;saved.evolution_progress=9;saved.inventory[13]=217;pet_state_init();
+    assert(pet_room_gifts(pet_state_get())==0 && pet_wall_sticker(pet_state_get())==-1);
+    // Exhaustive byte decoding agrees with the backend's bounded mask format.
+    Pet encoded=legacy;encoded.evolution_progress=90;encoded.inventory[15]=0;
+    for(unsigned value=0;value<256;value++) {
+        encoded.inventory[14]=value;encoded.inventory[13]=value;
+        assert(pet_room_gifts(&encoded)==(value>=128 && value<=191?(value&63):0));
+        assert(pet_wall_sticker(&encoded)==(value>=200 && value<218?(int)value-200:-1));
+    }
     saved=legacy;saved.evolution_progress=60;pet_state_init();assert(pet_equip_decoration(1));
 
     // Visits never grant stars or interrupt speech, and navigation owns all
@@ -464,7 +515,7 @@ int main(void)
     assert(fresh->pet_id!=old_pet.pet_id && fresh->stage==PET_STAGE_BABY);
     assert(!strcmp(fresh->name,"Sprout") && fresh->evolution_progress==0);
     assert(fresh->hunger==100 && fresh->happiness==100 && fresh->energy==100 && fresh->hygiene==100);
-    assert(pet_sticker_count(fresh)==0 && pet_equipped_decoration(fresh)==-1);
+    assert(pet_sticker_count(fresh)==0 && pet_room_gifts(fresh)==0 && pet_wall_sticker(fresh)==-1);
     for(unsigned i=3;i<PET_FOOD_COUNT;i++)assert(!pet_food_unlocked(fresh,i));
     assert(fresh->friends_met==0 && fresh->parent_a==0 && fresh->parent_b==0);
     for(unsigned i=0;i<16;i++)assert(fresh->inventory[i]==0);
@@ -473,7 +524,7 @@ int main(void)
     pet_state_tick(pet_state_get()->last_tick+179);assert(pet_state_get()->hunger==100);
     show(HOME);shot("fresh-pet");
     saved = snapshot; pet_state_init();
-    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 stickers, saved room gifts, weather and visits; all eight traits, preview wraparound and unchanged genes/save; milestone foods, distinct poses, cancel, failed saves and capped bonuses");
+    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; all eight traits, preview wraparound and unchanged genes/save; milestone foods, distinct poses, cancel, failed saves and capped bonuses");
     lv_deinit();
     return 0;
 }

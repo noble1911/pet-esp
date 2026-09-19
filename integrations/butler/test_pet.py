@@ -46,6 +46,27 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         for event in ('finished_hide_game','finished_ball_game','butterfly_visit'):
             PetState(**{**STATE,'recent_event':event,'recent_event_age_seconds':0})
 
+    def test_room_gifts_and_wall_sticker(self):
+        for value in range(256):
+            inventory=[0]*16
+            inventory[14]=value
+            inventory[13]=value
+            state=PetState(**{**STATE,'stars':90,'inventory':inventory})
+            rewards=reward_snapshot(state)
+            expected=(value & 63).bit_count() if 128 <= value <= 191 else 0
+            self.assertEqual(len(rewards['placed_room_gifts']),expected)
+            self.assertEqual(rewards['wall_sticker'] is not None,200 <= value <= 217)
+        inventory=[0]*13+[217,191,100]
+        state=PetState(**{**STATE,'stars':29,'inventory':inventory})
+        rewards=reward_snapshot(state)
+        self.assertEqual(rewards['placed_room_gifts'],['flowers','bunting'])
+        self.assertIsNone(rewards['wall_sticker'])
+        state.stars=90
+        self.assertEqual(len(reward_snapshot(state)['placed_room_gifts']),6)
+        self.assertEqual(reward_snapshot(state)['wall_sticker'],'Present')
+        state.inventory[14]=128
+        self.assertEqual(reward_snapshot(state)['placed_room_gifts'],[])
+
     def test_all_trait_values_match_catalogue_and_current_renderer(self):
         from api.routes.pet_traits import TRAITS
         self.assertEqual(len(TRAITS),8)

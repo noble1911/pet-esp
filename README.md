@@ -10,7 +10,7 @@ A gentle touchscreen pet for the **Waveshare ESP32-S3-Touch-AMOLED-1.8 (original
 
 Care has distinct sound effects, and **Play → Music** offers three offline tunes plus a button to ask Sprout for an original melody. You can also say “make me a happy tune.” See [sounds, music, tests and rollback](docs/sound-music-v1.md).
 
-Playtime adds Peekaboo, Bouncy ball, eighteen stickers, six saved room gifts, butterfly visits and changing pretend window weather. Existing progress counts toward every reward. See [controls, testing and rollback](docs/playtime-v1.md).
+Playtime adds Peekaboo, Bouncy ball, eighteen interactive wall stickers, six room gifts that can be placed together, butterfly visits and changing pretend window weather. See [playful rewards](docs/playful-rewards-v2.md) for the new treasure menu and room interactions. Existing progress counts toward every reward. See [controls, testing and rollback](docs/playtime-v1.md).
 
 ## Pixel-art v1
 
@@ -31,7 +31,7 @@ This uses a separate verified binary bundle and does not erase NVS. For the old 
 - **Sleep:** a six-second nap restores energy. Back cancels the nap.
 - **Bath:** pop five big bubbles.
 - Tap your pet for a cuddle and a little hop.
-- Each completed activity earns one saved star. Collect eighteen stickers, one every five stars, via the star button at home. Six room gifts unlock at 10, 20, 30, 45, 60 and 90 stars; choose one in My room gifts. Stars are never spent. Growth adds a tuft, flower, scarf and golden badge at 10, 30, 60 and 100 stars.
+- Each completed activity earns one saved star. Collect eighteen stickers, one every five stars, via the star button at home. The star opens a picture menu for **Stickers** and **Gifts**. Pick a sticker for the wall and tap it to replay its animation; six room gifts unlock at 10, 20, 30, 45, 60 and 90 stars and can all stay in the room together. Tap placed gifts for playful reactions. Stars are never spent. Growth adds a tuft, flower, scarf and golden badge at 10, 30, 60 and 100 stars.
 - The matching coloured bars show food, happiness, energy and cleanliness. They also open their activities.
 - **Food → Special treats** adds four permanent milestone recipes: Star cupcake (10 care stars), Berry pancakes (25), Rainbow jelly (50), Party cake (100). Each has matching whole/bitten poses, its own sound and voice reaction. Existing progress counts; stars are never spent. See [special foods](docs/special-foods-v1.md).
 - **Options → My pet** opens a two-page trait profile. Tap a card to browse six coat colours, eight personalities and all six saved appearance genes. Coat previews never change your pet. Grey traits are saved but not rendered by the current artwork. Voice now knows the same trait names; see [trait guide](docs/pet-traits-v1.md).

@@ -1,5 +1,7 @@
 # Playtime and keepsakes
 
+This describes the original release. Current sticker and gift controls are in [Playful rewards v2](playful-rewards-v2.md).
+
 ## Controls
 
 - Home → **Play** opens Stars, Peekaboo and Bouncy ball.

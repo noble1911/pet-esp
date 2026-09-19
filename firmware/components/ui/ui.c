@@ -21,7 +21,7 @@
 #define PINK 0xf3a8b6
 #define BLUE 0xa9dbef
 
-typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT, TREATS } View;
+typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT, TREATS, REWARDS } View;
 static View s_view;
 static lv_obj_t *s_root, *s_pet, *s_bars[4], *s_target, *s_counter;
 static lv_obj_t *s_dots[5], *s_hint, *s_sleep_bar;
@@ -41,6 +41,10 @@ static unsigned s_hits, s_last_target;
 static bool s_eating, s_muted;
 static unsigned s_profile_page, s_trait_gene, s_trait_variant;
 static unsigned s_album_page, s_hiding, s_weather_mode;
+static lv_obj_t *s_keepsakes[5], *s_keepsake_label;
+static uint32_t s_keepsake_started, s_keepsake_until;
+static unsigned s_keepsake_choice;
+static void play_keepsake(unsigned sticker);
 static uint32_t s_reveal_until, s_ball_ready, s_ball_time, s_next_butterfly, s_butterfly_until;
 static bool s_ball_pressed;
 static int s_music_choice=-1;
@@ -141,12 +145,13 @@ static void reset_cb(lv_event_t *e)
     voice_cancel();audio_stop_tune();
     esp_restart();
 }
-static void header(const char *title)
+static void header_to(const char *title,View back)
 {
-    lv_obj_t *b=button(s_root,24,22,48,48,0xffffff,home_cb,0);
+    lv_obj_t *b=button(s_root,24,22,48,48,0xffffff,nav_cb,back);
     label(b,LV_SYMBOL_LEFT,0,11,48,true);
     label(s_root,title,80,32,264,true);
 }
+static void header(const char *title) {header_to(title,HOME);}
 static void room(bool night)
 {
     lv_obj_t *bg=lv_image_create(s_root);
@@ -284,7 +289,7 @@ static void volume_cb(lv_event_t *e)
 }
 static const char *activity(void)
 {
-    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits","special treats"}[s_view];
+    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits","special treats","choosing stickers or gifts"}[s_view];
 }
 static void talk_begin(void)
 {
@@ -334,11 +339,14 @@ static void page_cb(lv_event_t *e)
 }
 static void sticker_cb(lv_event_t *e)
 {
-    unsigned i=(unsigned)(intptr_t)lv_event_get_user_data(e);char text[80];
-    unsigned n=pet_state_get()->evolution_progress;
-    if(n>=(i+1)*5)snprintf(text,sizeof text,"%s - yours to keep!",sticker_names[i]);
-    else snprintf(text,sizeof text,"%s: %lu more stars",sticker_names[i],(unsigned long)((i+1)*5-n));
-    lv_label_set_text(s_hint,text);audio_play(SFX_SELECT);
+    int i=(int)(intptr_t)lv_event_get_user_data(e);char text[80];
+    if(i>=0 && (unsigned)i>=pet_sticker_count(pet_state_get())) {
+        snprintf(text,sizeof text,"%s: %lu more stars",sticker_names[i],
+                 (unsigned long)((i+1)*5-pet_state_get()->evolution_progress));
+        lv_label_set_text(s_hint,text);audio_play(SFX_SELECT);return;
+    }
+    if(!pet_set_wall_sticker(i)) {lv_label_set_text(s_hint,"Couldn't save. Please try again.");return;}
+    show(HOME);if(i>=0)play_keepsake((unsigned)i);
 }
 static void decorate_cb(lv_event_t *e)
 {
@@ -348,8 +356,9 @@ static void decorate_cb(lv_event_t *e)
                  (unsigned long)(pet_decoration_threshold((unsigned)d)-pet_state_get()->evolution_progress));
         lv_label_set_text(s_hint,text);return;
     }
-    if(!pet_equip_decoration(d)) {lv_label_set_text(s_hint,"Couldn't save. Please try again.");return;}
-    audio_play(SFX_GIFT);show(HOME);
+    bool ok=d<0?pet_equip_decoration(-1):pet_toggle_decoration((unsigned)d);
+    if(!ok) {lv_label_set_text(s_hint,"Couldn't save. Please try again.");return;}
+    audio_play(SFX_GIFT);show(DECORATIONS);
 }
 static void profile_page_cb(lv_event_t *e)
 {
@@ -435,7 +444,7 @@ static void make_trait(void)
 }
 static void make_album(void)
 {
-    header("My stickers");const Pet *p=pet_state_get();unsigned count=pet_sticker_count(p);char text[80];
+    header_to("My stickers",REWARDS);const Pet *p=pet_state_get();unsigned count=pet_sticker_count(p);char text[80];
     snprintf(text,sizeof text,"%u / 18 stickers  |  %lu stars",count,(unsigned long)p->evolution_progress);
     label(s_root,text,24,85,320,false);
     if(count==PET_STICKER_COUNT)snprintf(text,sizeof text,"Your collection is complete!");
@@ -448,30 +457,116 @@ static void make_album(void)
         if(earned)art(b,pixel_collectible(i),23,3,512);
         else {shape(b,36,9,22,22,0xb4beb5,0);shape(b,41,14,12,17,0xe9ede6,0);shape(b,31,24,32,22,0xb4beb5,0);}
         label(b,sticker_names[i],1,52,92,false);
-        char threshold[24];snprintf(threshold,sizeof threshold,earned?"%u stars " LV_SYMBOL_OK:"%u stars",(i+1)*5);
+        char threshold[24];
+        if(pet_wall_sticker(p)==(int)i)snprintf(threshold,sizeof threshold,"On wall");
+        else if(earned)snprintf(threshold,sizeof threshold,"Tap to play");
+        else snprintf(threshold,sizeof threshold,"%u stars",(i+1)*5);
         label(b,threshold,0,71,94,false);
     }
     lv_obj_t *prev=button(s_root,29,344,64,44,MINT,page_cb,-1);label(prev,LV_SYMBOL_LEFT,0,9,64,true);
     snprintf(text,sizeof text,"Page %u of 3",s_album_page+1);label(s_root,text,105,357,158,false);
     lv_obj_t *next=button(s_root,275,344,64,44,MINT,page_cb,1);label(next,LV_SYMBOL_RIGHT,0,9,64,true);
-    lv_obj_t *gifts=button(s_root,29,399,310,40,BLUE,nav_cb,DECORATIONS);label(gifts,"My room gifts " LV_SYMBOL_HOME,0,11,310,false);
+    if(pet_wall_sticker(p)>=0) {
+        lv_obj_t *clear=button(s_root,29,399,310,40,BLUE,sticker_cb,-1);label(clear,"Take sticker off wall",0,11,310,false);
+    } else label(s_root,"Pick one for your wall. Tap it to play!",16,410,336,false);
 }
 static void make_decorations(void)
 {
-    header("My room gifts");const Pet *p=pet_state_get();int selected=pet_equipped_decoration(p);
-    s_hint=label(s_root,"Tap a gift to put it in your room",24,88,320,false);
+    header_to("My room gifts",REWARDS);const Pet *p=pet_state_get();unsigned placed=pet_room_gifts(p);
+    s_hint=label(s_root,"Tap to add or remove. Pick several!",24,88,320,false);
     for(unsigned i=0;i<PET_DECORATION_COUNT;i++) {
-        bool unlocked=pet_decoration_unlocked(p,i);
-        lv_obj_t *b=button(s_root,29+(i%3)*108,123+(i/3)*112,94,103,selected==(int)i?MINT:unlocked?0xffecd1:0xe9ede6,decorate_cb,(int)i);
+        bool unlocked=pet_decoration_unlocked(p,i), selected=(placed&(1u<<i))!=0;
+        lv_obj_t *b=button(s_root,29+(i%3)*108,123+(i/3)*112,94,103,selected?MINT:unlocked?0xffecd1:0xe9ede6,decorate_cb,(int)i);
         art(b,pixel_decoration(i),27,5,256);
         if(!unlocked)lv_obj_set_style_opa(b,LV_OPA_60,0);
         label(b,decor_names[i],0,51,94,false);
-        char text[24];snprintf(text,sizeof text,selected==(int)i?"In room":unlocked?"Use gift":"%u stars",pet_decoration_threshold(i));
+        char text[24];snprintf(text,sizeof text,selected?"Remove " LV_SYMBOL_OK:unlocked?"Add gift":"%u stars",pet_decoration_threshold(i));
         label(b,text,0,77,94,false);
     }
-    lv_obj_t *plain=button(s_root,29,350,145,44,CREAM,decorate_cb,-1);label(plain,"Plain room",0,14,145,false);
-    lv_obj_t *album=button(s_root,194,350,145,44,BLUE,nav_cb,ALBUM);label(album,"My stickers",0,14,145,false);
-    label(s_root,"Gifts stay yours. Stars aren't spent.",24,413,320,false);
+    lv_obj_t *plain=button(s_root,29,350,145,44,CREAM,decorate_cb,-1);label(plain,"Put all away",0,14,145,false);
+    lv_obj_t *album=button(s_root,194,350,145,44,MINT,nav_cb,HOME);label(album,"See my room",0,14,145,false);
+    label(s_root,"Tap your gifts in the room to play!",24,413,320,false);
+}
+static void make_rewards(void)
+{
+    header("My treasures");label(s_root,"What shall we play with?",24,91,320,false);
+    lv_obj_t *stickers=button(s_root,24,137,320,112,PINK,nav_cb,ALBUM);
+    art(stickers,pixel_collectible(5),15,28,640);
+    label(stickers,"Stickers",88,24,218,true);
+    label(stickers,"Pick one for your wall",82,60,228,false);
+    lv_obj_t *gifts=button(s_root,24,270,320,112,MINT,nav_cb,DECORATIONS);
+    art(gifts,pixel_collectible(17),15,28,640);
+    label(gifts,"Gifts",88,24,218,true);
+    label(gifts,"Make your room yours",82,60,228,false);
+    label(s_root,"Caring earns stars and little surprises",16,410,336,false);
+}
+// Every sticker has a little pretend action. These never change care stats or
+// grant stars. One bounded effect is reused, so repeated taps cannot stack work.
+typedef enum { FLOAT_UP, BOUNCE, ORBIT, FLUTTER, SHOWER, SWAY } keepsake_motion_t;
+static const struct {pixel_face_t pose; sfx_id_t sound; keepsake_motion_t motion; const char *text;} keepsake_actions[PET_STICKER_COUNT]={
+    {PIXEL_EAT,SFX_APPLE,SWAY,"Crunchy apple wiggles!"},
+    {PIXEL_PLAY,SFX_BOUNCE,BOUNCE,"Boing, boing, boing!"},
+    {PIXEL_SLEEP,SFX_SLEEP,FLOAT_UP,"A tiny moonbeam dream..."},
+    {PIXEL_BATH,SFX_BUBBLE,FLOAT_UP,"Bubbly little toes!"},
+    {PIXEL_HAPPY,SFX_STAR,SHOWER,"Twinkle shower!"},
+    {PIXEL_HAPPY,SFX_CUDDLE,FLOAT_UP,"A pocketful of cuddles!"},
+    {PIXEL_PLAY,SFX_BUTTERFLY,FLUTTER,"Flutter with me!"},
+    {PIXEL_HAPPY,SFX_BUTTERFLY,SWAY,"My flowers do a little dance!"},
+    {PIXEL_PLAY,SFX_BOUNCE,BOUNCE,"Bunny hops! Hop, hop!"},
+    {PIXEL_PLAY,SFX_HAPPY,ORBIT,"Rainbow wiggle dance!"},
+    {PIXEL_PLAY,SFX_BUTTERFLY,FLUTTER,"Whoosh! My kite can fly!"},
+    {PIXEL_HAPPY,SFX_BUBBLE,SHOWER,"Sprinkle, sprinkle, little leaves!"},
+    {PIXEL_SLEEP,SFX_SLEEP,SWAY,"Soft cloud daydreams..."},
+    {PIXEL_HAPPY,SFX_HAPPY,ORBIT,"Warm sunshine on my cheeks!"},
+    {PIXEL_PLAY,SFX_EMOTE,BOUNCE,"A little dum-de-dum dance!"},
+    {PIXEL_HAPPY,SFX_GIFT,SHOWER,"Royal wiggles! Ta-da!"},
+    {PIXEL_SLEEP,SFX_SLEEP,SWAY,"Once upon a tiny leaf..."},
+    {PIXEL_HAPPY,SFX_GIFT,SHOWER,"Surprise! A happy little wiggle!"}
+};
+static void play_keepsake(unsigned sticker)
+{
+    if(s_view!=HOME || sticker>=PET_STICKER_COUNT)return;
+    s_keepsake_choice=sticker;s_keepsake_started=lv_tick_get();s_keepsake_until=s_keepsake_started+4000;
+    for(unsigned i=0;i<5;i++) {
+        lv_image_set_src(s_keepsakes[i],pixel_collectible(sticker));
+        lv_obj_remove_flag(s_keepsakes[i],LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_label_set_text(s_keepsake_label,keepsake_actions[sticker].text);
+    lv_obj_remove_flag(s_keepsake_label,LV_OBJ_FLAG_HIDDEN);
+    audio_play(keepsake_actions[sticker].sound);
+}
+static void room_gift_cb(lv_event_t *e)
+{
+    unsigned gift=(unsigned)(uintptr_t)lv_event_get_user_data(e);
+    static const unsigned actions[PET_DECORATION_COUNT]={7,9,5,2,1,15};
+    if(gift<PET_DECORATION_COUNT)play_keepsake(actions[gift]);
+}
+static void wall_sticker_cb(lv_event_t *e)
+{
+    (void)e;int sticker=pet_wall_sticker(pet_state_get());if(sticker>=0)play_keepsake((unsigned)sticker);
+}
+static void keepsake_frame(uint32_t now,voice_state_t vs)
+{
+    if(!s_keepsake_until)return;
+    if((int32_t)(now-s_keepsake_until)>=0 || s_talking || vs==VOICE_LISTENING || vs==VOICE_THINKING || vs==VOICE_SPEAKING || audio_voice_playing()) {
+        s_keepsake_until=0;
+        for(unsigned i=0;i<5;i++)lv_obj_add_flag(s_keepsakes[i],LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_keepsake_label,LV_OBJ_FLAG_HIDDEN);return;
+    }
+    float t=(now-s_keepsake_started)/1000.0f;
+    for(unsigned i=0;i<5;i++) {
+        float phase=t*2.5f+i*1.256637f;int x=32+i*61,y=175;
+        switch(keepsake_actions[s_keepsake_choice].motion) {
+            case FLOAT_UP: y=276-(int)(t*42+i*28)%142;x+=(int)(sinf(phase)*10);break;
+            case BOUNCE: y=267-(int)(fabsf(sinf(phase))*90);break;
+            case ORBIT: x=164+(int)(cosf(phase)*114);y=214+(int)(sinf(phase)*61);break;
+            case FLUTTER: x=20+(int)(t*43+i*62)%298;y=180+(int)(sinf(phase*1.5f)*34);break;
+            case SHOWER: y=140+(int)(t*63+i*31)%137;x+=(int)(sinf(phase)*7);break;
+            case SWAY: y=173+(int)(sinf(phase)*23);x+=(int)(cosf(phase)*10);break;
+        }
+        lv_obj_set_pos(s_keepsakes[i],x,y);
+        lv_image_set_scale_x(s_keepsakes[i],keepsake_actions[s_keepsake_choice].motion==FLUTTER && (now/180+i)%2?256:384);
+    }
 }
 static void make_games(void)
 {
@@ -579,14 +674,22 @@ static void butterfly_cb(lv_event_t *e)
 }
 static void make_room_extras(void)
 {
-    int d=pet_equipped_decoration(pet_state_get());
-    if(d>=0) {
-        // Bunting hangs across the window; other gifts sit on the right of the rug.
-        art(s_root,pixel_decoration((unsigned)d),d==1?124:266,d==1?38:208,d==1?768:256);
+    unsigned gifts=pet_room_gifts(pet_state_get());
+    // Fixed toy-sized spots keep the pet, care buttons and talk target clear.
+    static const int positions[PET_DECORATION_COUNT][2]={{3,208},{124,56},{78,265},{275,137},{240,269},{320,198}};
+    for(unsigned d=0;d<PET_DECORATION_COUNT;d++)if(gifts&(1u<<d)) {
+        lv_obj_t *gift=button(s_root,positions[d][0],positions[d][1],d==1?120:48,d==1?82:48,CREAM,room_gift_cb,(int)d);
+        lv_obj_set_style_bg_opa(gift,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(gift,0,0);
+        art(gift,pixel_decoration(d),d==1?0:4,d==1?-18:4,d==1?768:256);
+    }
+    int sticker=pet_wall_sticker(pet_state_get());
+    if(sticker>=0) {
+        lv_obj_t *wall=button(s_root,25,77,56,60,0xffecd1,wall_sticker_cb,0);
+        art(wall,pixel_collectible((unsigned)sticker),8,11,384);
     }
     // Weather stays inside the glass; the authored curtains, frame and garden remain.
     s_weather=shape(s_root,124,78,120,76,0,0);lv_obj_set_style_bg_opa(s_weather,LV_OPA_TRANSP,0);
-    s_weather_icon=art(s_weather,pixel_collectible(13),76,d==1?37:0,d==1?256:384);
+    s_weather_icon=art(s_weather,pixel_collectible(13),76,(gifts&2)?37:0,(gifts&2)?256:384);
     for(int i=0;i<6;i++)s_rain[i]=shape(s_weather,6+(i%3)*12+(i/3)*66,24,2,7,0x4675af,0);
     s_weather_mode=3;
     s_butterfly=button(s_root,24,170,60,60,CREAM,butterfly_cb,0);
@@ -639,6 +742,14 @@ static void make_home(void)
 
     make_pet(82,120);
     make_room_extras();
+    for(unsigned i=0;i<5;i++) {
+        s_keepsakes[i]=art(s_root,pixel_collectible(4),32+i*61,175,384);
+        lv_obj_add_flag(s_keepsakes[i],LV_OBJ_FLAG_HIDDEN);
+    }
+    s_keepsake_label=label(s_root,"",12,299,344,false);
+    lv_obj_set_style_bg_color(s_keepsake_label,lv_color_hex(CREAM),0);
+    lv_obj_set_style_bg_opa(s_keepsake_label,LV_OPA_COVER,0);
+    lv_obj_add_flag(s_keepsake_label,LV_OBJ_FLAG_HIDDEN);
     // A fixed, generous hold target stays under the pet. Captions appear only
     // during a conversation, leaving the window visible during ordinary play.
     lv_obj_t *talk=button(s_root,24,320,320,44,CREAM,NULL,0);
@@ -652,7 +763,7 @@ static void make_home(void)
     s_caption_label=label(caption,"",8,9,300,false);
     lv_obj_set_height(s_caption_label,52);lv_label_set_long_mode(s_caption_label,LV_LABEL_LONG_SCROLL);
     lv_obj_add_flag(caption,LV_OBJ_FLAG_HIDDEN);
-    lv_obj_t *album=button(s_root,24,249,54,51,CREAM,nav_cb,ALBUM); icon(album,4,-2,1);
+    lv_obj_t *album=button(s_root,24,249,54,51,CREAM,nav_cb,REWARDS); icon(album,4,-2,1);
     lv_obj_t *settings=button(s_root,294,250,50,48,CREAM,nav_cb,SETTINGS);
     label(settings,LV_SYMBOL_SETTINGS,0,11,50,true);
     const char *names[]={"Food","Play","Sleep","Bath"};
@@ -674,6 +785,7 @@ static void show(View view)
     s_voice_status=NULL;s_caption_label=NULL;s_connection=NULL;s_name_input=NULL;s_name_error=NULL;
     // Single owner: no screen-specific timers or callbacks survive the root.
     s_volume_label=NULL; s_volume_slider=NULL;
+    s_keepsake_until=0;s_keepsake_label=NULL;memset(s_keepsakes,0,sizeof s_keepsakes);
     s_weather=NULL;s_weather_icon=NULL;s_butterfly=NULL;s_butterfly_image=NULL;
     memset(s_covers,0,sizeof s_covers);memset(s_cover_art,0,sizeof s_cover_art);memset(s_rain,0,sizeof s_rain);
     s_reveal_until=0;s_ball_ready=0;s_ball_pressed=false;s_ball_time=0;s_butterfly_until=0;
@@ -684,7 +796,8 @@ static void show(View view)
     s_view=view; s_started=lv_tick_get(); s_hits=0; s_eating=false; s_hop_until=0;s_reaction_until=0;
     s_root=shape(lv_screen_active(),0,0,368,448,CREAM,0);
     if(view==HOME) { make_home(); return; }
-    if(view==TREATS) {make_treats();
+    if(view==REWARDS) {make_rewards();
+    } else if(view==TREATS) {make_treats();
     } else if(view==PROFILE) {make_profile();
     } else if(view==TRAIT) {make_trait();
     } else if(view==MUSIC) {make_music();
@@ -902,7 +1015,7 @@ static void frame(lv_timer_t *t)
     }
     if(s_connection && now-s_connection_tick>=500) { char text[256];voice_status(text,sizeof(text));lv_label_set_text(s_connection,text);s_connection_tick=now; }
     if(now-s_last_tick>=10000) { pet_state_tick((uint32_t)time(NULL)); s_last_tick=now; refresh(); }
-    if(s_view==HOME)room_frame(now,vs);
+    if(s_view==HOME) {room_frame(now,vs);keepsake_frame(now,vs);}
     if(s_view==BALL && s_target && !s_ball_pressed && (int32_t)(s_ball_ready-now)<=0) {
         s_ball_time+=40;float phase=s_ball_time/4000.0f*6.2831853f;
         lv_obj_set_pos(s_target,136+(int)(sinf(phase)*108),290-(int)(fabsf(sinf(phase))*144));
@@ -922,7 +1035,13 @@ static void frame(lv_timer_t *t)
                audio_voice_playing()?PIXEL_TALK:vs==VOICE_LISTENING?PIXEL_LISTEN:
                vs==VOICE_THINKING?PIXEL_THINK:delighted?PIXEL_HAPPY:(s_view==CATCH || s_view==BALL)?PIXEL_PLAY:
                now%4200>4010?PIXEL_BLINK:PIXEL_IDLE;
-        pixel_pet_render(&s_pet_art,pet_state_get(),s_face,s_eating?elapsed/160:now/180,s_food);
+        bool keepsake=s_view==HOME && s_keepsake_until;
+        if(keepsake) {
+            s_face=keepsake_actions[s_keepsake_choice].pose;
+            lv_obj_set_y(s_pet,s_pet_y+(s_face==PIXEL_PLAY?-(int)(fabsf(sinf(now/120.0f))*10):0));
+        }
+        pixel_pet_render(&s_pet_art,pet_state_get(),s_face,s_eating?elapsed/160:now/180,
+                         keepsake && s_keepsake_choice==0?PIXEL_APPLE:s_food);
         lv_obj_invalidate(s_pet_image);
         if(hopping && !s_eating && !asleep && s_view!=HIDE) lv_obj_remove_flag(s_pet_heart,LV_OBJ_FLAG_HIDDEN);
         else lv_obj_add_flag(s_pet_heart,LV_OBJ_FLAG_HIDDEN);

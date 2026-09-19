@@ -366,18 +366,57 @@ bool pet_decoration_unlocked(const Pet *pet, unsigned decoration)
 {
     return pet && decoration<PET_DECORATION_COUNT && pet->evolution_progress>=pet_decoration_threshold(decoration);
 }
+unsigned pet_room_gifts(const Pet *pet)
+{
+    if(!pet)return 0;
+    unsigned value=pet->inventory[14], mask=0;
+    if(value>=128 && value<=191) mask=value & 63;
+    else if(pet->inventory[15]>=100 && pet->inventory[15]<106)
+        mask=1u<<(pet->inventory[15]-100); // schema-1 single-gift save
+    for(unsigned i=0;i<PET_DECORATION_COUNT;i++)
+        if(!pet_decoration_unlocked(pet,i))mask&=~(1u<<i);
+    return mask;
+}
 int pet_equipped_decoration(const Pet *pet)
 {
-    if(!pet)return -1;
-    int d=(int)pet->inventory[15]-100;
-    return d>=0 && pet_decoration_unlocked(pet,(unsigned)d) ? d : -1;
+    unsigned mask=pet_room_gifts(pet);
+    for(unsigned i=0;i<PET_DECORATION_COUNT;i++)if(mask&(1u<<i))return (int)i;
+    return -1;
+}
+static bool save_room_gifts(unsigned mask)
+{
+    Pet next=s_pet;
+    next.inventory[14]=(uint8_t)(128|mask);
+    next.inventory[15]=0;
+    // Older firmware still sees one of the placed gifts after rollback.
+    for(unsigned i=0;i<PET_DECORATION_COUNT;i++)if(mask&(1u<<i)) {
+        next.inventory[15]=(uint8_t)(100+i);break;
+    }
+    if(!pet_state_save(&next))return false;
+    s_pet=next;return true;
 }
 bool pet_equip_decoration(int decoration)
 {
     if(!s_have_pet || decoration < -1 || (decoration>=0 && !pet_decoration_unlocked(&s_pet,(unsigned)decoration)))return false;
-    Pet next=s_pet;
-    next.inventory[15]=decoration<0 ? 0 : (uint8_t)(100+decoration);
+    return save_room_gifts(decoration<0?0:1u<<decoration);
+}
+bool pet_toggle_decoration(unsigned decoration)
+{
+    if(!s_have_pet || !pet_decoration_unlocked(&s_pet,decoration))return false;
+    return save_room_gifts(pet_room_gifts(&s_pet)^(1u<<decoration));
+}
+int pet_wall_sticker(const Pet *pet)
+{
+    if(!pet)return -1;
+    int sticker=(int)pet->inventory[13]-200;
+    return sticker>=0 && (unsigned)sticker<pet_sticker_count(pet)?sticker:-1;
+}
+bool pet_set_wall_sticker(int sticker)
+{
+    if(!s_have_pet || sticker < -1 || (sticker>=0 && (unsigned)sticker>=pet_sticker_count(&s_pet)))return false;
+    uint8_t value=sticker<0?0:(uint8_t)(200+sticker);
+    if(s_pet.inventory[13]==value)return true;
+    Pet next=s_pet;next.inventory[13]=value;
     if(!pet_state_save(&next))return false;
-    s_pet=next;
-    return true;
+    s_pet=next;return true;
 }
