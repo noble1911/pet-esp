@@ -1,5 +1,7 @@
 # Sprout's voice — first version
 
+**Current voice:** [Creature voice v2](creature-voice-v2.md) uses Tiny Sprout (`af_heart`, speed 1.12, +6.5 semitones) and a concise creature personality. Older settings below document the earlier release.
+
 Sprout is the default name. Hold the speech bubble on the home screen, speak, and release. Holding **BOOT** records while held without leaving the current screen or interrupting a care activity. Recording stops after 20 seconds. Do not hold BOOT while powering on: that is the ESP's download-mode shortcut. PWR retains its existing hardware function.
 
 **Options → Pet name** changes the saved name without changing identity or memories. Names use 1–15 letters/spaces/apostrophes/hyphens and start with a letter. Existing saves are migrated without resetting progress.

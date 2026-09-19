@@ -1,0 +1,32 @@
+{
+  "text": "Ooh, it's you! Little leaf wiggles! That cupcake looks yummy.",
+  "profiles": [
+    {
+      "file": "01-current.wav",
+      "voice": "af_sky",
+      "speed": 1.05,
+      "pitch_semitones": 3,
+      "seconds": 3.3,
+      "peak": 0.454,
+      "rms": 0.049
+    },
+    {
+      "file": "02-tiny-sprout.wav",
+      "voice": "af_heart",
+      "speed": 1.12,
+      "pitch_semitones": 6.5,
+      "seconds": 3.14,
+      "peak": 0.474,
+      "rms": 0.051
+    },
+    {
+      "file": "03-woodland-sprout.wav",
+      "voice": "am_puck",
+      "speed": 1.1,
+      "pitch_semitones": 8,
+      "seconds": 2.91,
+      "peak": 0.597,
+      "rms": 0.083
+    }
+  ]
+}

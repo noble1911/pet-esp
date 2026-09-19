@@ -1,0 +1,29 @@
+[
+  {
+    "case": "hello",
+    "reply": "Oh! It's you. Little leaf wiggles!",
+    "words": 6,
+    "seconds": 1.9,
+    "voice": "af_heart",
+    "speed": 1.12,
+    "pitch": 6.5
+  },
+  {
+    "case": "feisty",
+    "reply": "I'm not a potato\u2014I'm a sprout! But I like being silly. Bouncy and green!",
+    "words": 14,
+    "seconds": 4.16,
+    "voice": "af_heart",
+    "speed": 1.12,
+    "pitch": 6.5
+  },
+  {
+    "case": "identity",
+    "reply": "Nope, I'm a pretend pet in this toy. But I'm real fun to play with!",
+    "words": 15,
+    "seconds": 3.74,
+    "voice": "af_heart",
+    "speed": 1.12,
+    "pitch": 6.5
+  }
+]

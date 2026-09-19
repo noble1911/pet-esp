@@ -157,6 +157,7 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
             facts.assert_not_awaited()
         self.assertEqual(captured['tools'],{})
         self.assertEqual(captured['max_tokens'],100)
+        self.assertIn('at most 10 words',' '.join(p['text'] for p in captured['system_prompt']))
     async def test_fresh_food_reaction_is_specific_and_has_no_memory_tools(self):
         pool=MagicMock();captured={}
         async def brain(**kwargs):
