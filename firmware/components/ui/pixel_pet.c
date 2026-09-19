@@ -1,6 +1,8 @@
-// Native 56x56 pixel creature: exact integer pixels, no image decoder or scaling blur.
+// Full illustrated sprite frames, compiled to flash; no runtime image decoder.
 #include "pixel_pet.h"
 #include <string.h>
+#include "pet_sprites.h"
+#include "pet_icons.h"
 #define W PIXEL_PET_SIZE
 #define OUTLINE 0xff3d203dU
 #define CREAM   0xffffedb0U
@@ -10,159 +12,67 @@ static void rect(pixel_pet_art_t *a,int x,int y,int w,int h,uint32_t c)
     for(int yy=y;yy<y+h;yy++) for(int xx=x;xx<x+w;xx++)
         if(xx>=0 && xx<W && yy>=0 && yy<W) a->pixels[yy*W+xx]=c;
 }
-static void oval(pixel_pet_art_t *a,int x,int y,int w,int h,uint32_t c)
+void pixel_pet_render(pixel_pet_art_t *a,const Pet *pet,pixel_face_t face,unsigned phase,pixel_food_t food)
 {
-    for(int yy=0;yy<h;yy++) for(int xx=0;xx<w;xx++) {
-        int dx=2*xx-w+1,dy=2*yy-h+1;
-        if(dx*dx*h*h+dy*dy*w*w<=w*w*h*h) rect(a,x+xx,y+yy,1,1,c);
+    pet_sprite_id_t id=SPRITE_IDLE;
+    switch(face) {
+    case PIXEL_IDLE: id=phase%28<7?SPRITE_WAVE:SPRITE_IDLE;break;
+    case PIXEL_BLINK: id=SPRITE_BLINK;break;
+    case PIXEL_HAPPY: id=(pet_sprite_id_t[]){SPRITE_HAPPY,SPRITE_REACH_LEFT,SPRITE_HAPPY,SPRITE_REACH_RIGHT}[(phase/2)%4];break;
+    case PIXEL_LISTEN: id=SPRITE_LISTEN;break;
+    case PIXEL_THINK: id=phase%8<4?SPRITE_LISTEN:SPRITE_BLINK;break;
+    case PIXEL_TALK: id=phase%3==0?SPRITE_IDLE:SPRITE_TALK;break;
+    case PIXEL_EAT:
+        if(food>PIXEL_COOKIE)food=PIXEL_APPLE;
+        id=(pet_sprite_id_t)((phase<3?SPRITE_APPLE:SPRITE_APPLE_BITE)+food);break;
+    case PIXEL_SLEEP: id=(phase/8)%2?SPRITE_SLEEP_BREATHE:SPRITE_SLEEP;break;
+    case PIXEL_BATH: id=(phase/3)%2?SPRITE_BATH_SPLASH:SPRITE_BATH;break;
+    case PIXEL_PLAY: id=(phase/3)%2?SPRITE_REACH_RIGHT:SPRITE_REACH_LEFT;break;
     }
-}
-static void leaf(pixel_pet_art_t *a,int x,int y)
-{
-    rect(a,x+2,y,5,2,OUTLINE);rect(a,x,y+2,9,5,OUTLINE);
-    rect(a,x-2,y+5,8,4,OUTLINE);rect(a,x-3,y+8,4,3,OUTLINE);
-    rect(a,x+2,y+2,5,3,0xff7cb957);rect(a,x,y+4,5,3,0xff7cb957);
-    rect(a,x-1,y+7,3,2,0xff46965b);
-}
-void pixel_pet_render(pixel_pet_art_t *a,const Pet *pet,pixel_face_t face,unsigned phase)
-{
-    static const uint32_t coats[][3]={
-        {0xffffdf72,0xffffe991,0xffefb851}, {0xffb7a0e5,0xffd3bdf5,0xff9575c5},
-        {0xff8bd6ad,0xffb5e8b9,0xff60b394}, {0xfff6acc7,0xffffcbd6,0xffd982ab},
-        {0xffffd498,0xffffe6b3,0xffe4aa70}, {0xff90cce9,0xffbce7f5,0xff68a8d4}
-    };
-    const uint32_t *c=coats[pet->genes[GENE_BODY_COLOR]%6];
+    static const uint8_t coats[6][3]={{255,224,112},{188,156,231},{137,213,171},
+                                    {245,164,196},{255,202,141},{139,204,232}};
+    unsigned coat=pet->genes[GENE_BODY_COLOR]%6;
     memset(a->pixels,0,sizeof a->pixels);
-    // Hand-authored stepped silhouette: broad cheeks, tucked feet, a waving arm.
-    // Each row is a span on the 56-pixel grid rather than a mathematical ellipse.
-    oval(a,9,49,40,5,0x554c715b);
-    if(face==PIXEL_SLEEP) {
-        oval(a,5,20,46,31,OUTLINE);oval(a,7,21,42,28,0xffb8a7d8);
-        oval(a,10,23,36,22,0xffe2d7f2);
+    for(int y=0;y<W;y++)for(int x=0;x<W;x++) {
+        uint16_t rgb=pet_sprite_pixels[id][y*W+x];
+        if(!rgb)continue;
+        int r=((rgb>>11)&31)*255/31,g=((rgb>>5)&63)*255/63,b=(rgb&31)*255/31;
+        // Tint only yellow fur; preserve food, quilt, tub, face and leaves.
+        bool fur=r>175 && g>140 && b<185 && r>b+35 && g>b+25;
+        if(face==PIXEL_EAT && x>22 && x<50 && y>39)fur=false;
+        if(face==PIXEL_SLEEP && y>35)fur=false;
+        if(face==PIXEL_BATH && y>39)fur=false;
+        if(coat && fur) {
+            int shade=(r+g+b)/3-197;
+            r=coats[coat][0]+shade;g=coats[coat][1]+shade;b=coats[coat][2]+shade;
+            r=r<0?0:r>255?255:r;g=g<0?0:g>255?255:g;b=b<0?0:b>255?255:b;
+        }
+        // Baby remains a little smaller, with feet on the same baseline.
+        int dx=x,dy=y;
+        if(pet->stage==PET_STAGE_BABY){dx=4+x*64/72;dy=8+y*64/72;}
+        a->pixels[dy*W+dx]=0xff000000U|((uint32_t)r<<16)|((uint32_t)g<<8)|(uint32_t)b;
     }
-    leaf(a,30,3);
-    if(pet->stage>=PET_STAGE_CHILD) {
-        rect(a,21,8,5,5,OUTLINE);rect(a,22,9,3,3,0xff8dce6d);
+    // Small growth keepsakes sit on the finished artwork rather than rebuilding it.
+    if(pet->stage>=PET_STAGE_TEEN && face!=PIXEL_SLEEP && face!=PIXEL_BATH) {
+        rect(a,47,27,3,7,0xfff58dad);rect(a,45,29,7,3,0xfff58dad);rect(a,47,29,3,3,CREAM);
     }
-    rect(a,16,46,7,7,OUTLINE);rect(a,34,46,7,7,OUTLINE);
-    rect(a,17,47,5,5,c[0]);rect(a,35,47,5,5,c[0]);
-    static const uint8_t left[]={24,21,19,17,16,15,14,13,12,12,11,11,10,10,9,9,9,8,8,8,8,8,8,8,9,9,10,11,12,14,16,19,23};
-    for(int row=0;row<33;row++) {
-        int y=15+row,l=left[row],r=55-l;
-        rect(a,l,y,r-l+1,1,OUTLINE);
+    if(pet->stage>=PET_STAGE_ADULT && face!=PIXEL_SLEEP && face!=PIXEL_BATH && face!=PIXEL_EAT) {
+        rect(a,25,54,23,2,0xffbd5e88);rect(a,43,56,4,5,0xffe994b5);
     }
-    static uint8_t mask[W*W];
-    for(int i=0;i<W*W;i++)mask[i]=a->pixels[i]==OUTLINE;
-    for(int y=16;y<48;y++)for(int x=8;x<48;x++) {
-        int i=y*W+x;
-        if(mask[i]&&mask[i-1]&&mask[i+1]&&mask[i-W]&&mask[i+W])
-            a->pixels[i]=(y>43 || x>43)?c[2]:(y<25 || x<16)?c[1]:c[0];
-    }
-    rect(a,20,18,6,1,CREAM);rect(a,16,21,4,2,CREAM);
-    // Relaxed left paw and raised right paw echo the approved concept.
-    if(face!=PIXEL_SLEEP && face!=PIXEL_EAT) {
-        rect(a,6,35,5,10,OUTLINE);rect(a,4,39,6,5,OUTLINE);
-        rect(a,7,35,4,8,c[0]);rect(a,5,40,5,3,c[0]);
-        int hy=25+(face==PIXEL_HAPPY?(phase%2)*2:0);
-        rect(a,45,hy,7,13,OUTLINE);rect(a,47,hy-2,4,3,OUTLINE);
-        rect(a,45,hy+2,5,9,c[0]);rect(a,48,hy,2,4,c[1]);
-    }
-    // Blush and simple bead eyes stay readable at 3x scale.
-    rect(a,13,32,5,4,BLUSH);rect(a,38,32,5,4,BLUSH);
-    if(face==PIXEL_SLEEP || face==PIXEL_BLINK) {
-        for(int x=18;x<=33;x+=15) {rect(a,x,28,2,1,OUTLINE);rect(a,x+2,29,3,1,OUTLINE);rect(a,x+5,28,1,1,OUTLINE);}
-    } else if(face==PIXEL_HAPPY || face==PIXEL_EAT) {
-        for(int x=18;x<=33;x+=15) {rect(a,x,28,2,3,OUTLINE);rect(a,x+2,27,3,2,OUTLINE);rect(a,x+5,28,1,3,OUTLINE);}
-    } else {
-        oval(a,19,27,3,4,OUTLINE);oval(a,34,26,3,4,OUTLINE);
-    }
-    if(face==PIXEL_SLEEP) {
-        rect(a,26,33,4,2,OUTLINE);
-    } else if(face==PIXEL_EAT && phase%2==0) {
-        rect(a,25,34,6,2,OUTLINE);
-    } else {
-        rect(a,25,33,7,4,OUTLINE);rect(a,26,37,5,1,OUTLINE);
-        rect(a,27,35,4,2,0xffed94b4);
-        if(face==PIXEL_TALK && phase%2==0)rect(a,26,32,5,5,OUTLINE);
-    }
-    if(pet->stage>=PET_STAGE_TEEN) {
-        rect(a,39,16,3,7,0xfff58dad);rect(a,37,18,7,3,0xfff58dad);rect(a,39,18,3,3,0xffffdf72);
-    }
-    if(pet->stage>=PET_STAGE_ADULT) {
-        rect(a,15,40,26,3,0xffb95886);rect(a,16,40,24,1,0xfff2a0bd);rect(a,37,43,4,5,0xffd3769c);
-    }
-    if(pet->stage>=PET_STAGE_ELDER) {rect(a,27,41,3,5,CREAM);rect(a,26,42,5,3,CREAM);}
-    if(face==PIXEL_EAT) {
-        // Apple held by both hands, with a leaf and a cheeky bite notch.
-        oval(a,21,38,15,12,OUTLINE);oval(a,23,39,11,9,0xffed5766);
-        rect(a,27,35,2,5,OUTLINE);rect(a,29,35,4,2,0xff6eb66c);
-        rect(a,25,40,2,3,0xffffd4be);
-        rect(a,19,42,5,3,OUTLINE);rect(a,20,42,4,2,c[0]);
-        rect(a,34,42,5,3,OUTLINE);rect(a,34,42,4,2,c[0]);
-        rect(a,39,49,2,2,0xffed5766);
-    }
-    if(face==PIXEL_SLEEP) {
-        // Patchwork futon: pixel border, pillow, alternating mint/pink patches.
-        rect(a,7,37,42,17,OUTLINE);rect(a,9,36,38,17,0xffd6c5f1);
-        for(int yy=39;yy<51;yy+=6)for(int xx=11;xx<45;xx+=8)
-            rect(a,xx,yy,8,6,((xx/8+yy/6)%2)?0xff83cbb5:0xffe7a4c7);
-        rect(a,10,37,36,2,0xffffe8ee);rect(a,11,51,34,1,0xffa18abe);
-        for(int x=14;x<44;x+=12){rect(a,x,43,5,1,0xffffe8ee);rect(a,x+2,41,1,5,0xffffe8ee);rect(a,x+2,43,1,1,0xffffd677);}
-        rect(a,15,35,5,4,c[0]);rect(a,36,35,5,4,c[0]);
-    }
+    if(pet->stage>=PET_STAGE_ELDER && face!=PIXEL_SLEEP && face!=PIXEL_BATH && face!=PIXEL_EAT)
+        {rect(a,34,54,3,4,CREAM);rect(a,33,55,5,2,CREAM);}
     a->image=(lv_image_dsc_t){.header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_ARGB8888,.w=W,.h=W,.stride=W*4},.data_size=sizeof a->pixels,.data=(const uint8_t*)a->pixels};
 }
 const lv_image_dsc_t *pixel_icon(unsigned kind)
 {
-    static pixel_pet_art_t workspace;
-    static uint32_t pixels[7][20*20];
-    static lv_image_dsc_t images[7];
+    static lv_image_dsc_t images[9];
     static bool ready;
     if(!ready) {
-        for(unsigned k=0;k<7;k++) {
-            pixel_pet_art_t *a=&workspace;
-            memset(a,0,sizeof *a);
-            if(k==0) {
-                oval(a,2,6,16,13,OUTLINE);oval(a,4,7,12,10,0xffed5766);
-                rect(a,9,2,2,6,OUTLINE);rect(a,11,2,5,3,0xff69ae68);rect(a,5,9,2,4,0xffffc3c0);
-            } else if(k==1) {
-                oval(a,1,1,18,18,OUTLINE);oval(a,3,3,14,14,0xffffdc75);
-                rect(a,10,4,5,6,0xff80d4e1);rect(a,4,10,6,5,0xffed779f);
-                rect(a,9,9,3,7,0xfffff2cf);
-            } else if(k==2) {
-                oval(a,2,1,15,18,OUTLINE);oval(a,4,3,11,14,0xffffdc75);
-                // Transparent notch cut from the upper-right quadrant.
-                oval(a,9,-1,12,14,0);rect(a,15,11,3,2,OUTLINE);
-            } else if(k==3) {
-                oval(a,1,8,11,11,OUTLINE);oval(a,3,10,7,7,0xff68c6e8);
-                oval(a,10,1,9,9,OUTLINE);oval(a,12,3,5,5,0xffa5e3f7);
-                rect(a,4,11,2,2,0xffffffff);rect(a,13,3,2,2,0xffffffff);
-            } else if(k==4) {
-                static const char *rows[]={
-                    ".........##.........", "........####........", "........####........",
-                    ".......######.......", ".......######.......", "......########......",
-                    ".##################.", "####################", ".##################.",
-                    "..################..", "...##############...", "....############....",
-                    ".....##########.....", "....############....", "....############....",
-                    "...######..######...", "...####......####...", "..###..........###..",
-                    "..##............##..", "...................."};
-                for(int y=0;y<20;y++)for(int x=0;x<20;x++)if(rows[y][x]=='#') {
-                    bool inside=x>0 && x<19 && y>0 && y<19 && rows[y][x-1]=='#' && rows[y][x+1]=='#' && rows[y-1][x]=='#' && rows[y+1][x]=='#';
-                    rect(a,x,y,1,1,inside?0xffffdc75:OUTLINE);
-                }
-            } else if(k==6) {
-                oval(a,1,2,10,10,OUTLINE);oval(a,9,2,10,10,OUTLINE);
-                rect(a,4,9,12,5,OUTLINE);rect(a,7,14,6,3,OUTLINE);rect(a,9,17,2,2,OUTLINE);
-                oval(a,3,4,7,7,0xffed779f);oval(a,10,4,7,7,0xffed779f);
-                rect(a,6,9,8,4,0xffed779f);rect(a,8,13,4,2,0xffed779f);
-            } else {
-                oval(a,7,1,7,18,0xffec85ab);oval(a,1,6,18,8,0xffec85ab);
-                oval(a,7,7,7,7,0xffffdc75);
-            }
-            for(int y=0;y<20;y++) memcpy(&pixels[k][y*20],&a->pixels[y*W],20*sizeof(uint32_t));
-            images[k]=(lv_image_dsc_t){.header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_ARGB8888,.w=20,.h=20,.stride=80},.data_size=sizeof pixels[k],.data=(const uint8_t*)pixels[k]};
-        }
+        for(unsigned i=0;i<9;i++)images[i]=(lv_image_dsc_t){
+            .header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_ARGB8888,.w=24,.h=24,.stride=96},
+            .data_size=sizeof pet_icon_pixels[i],.data=(const uint8_t*)pet_icon_pixels[i]};
         ready=true;
     }
-    return &images[kind%7];
+    const unsigned map[]={0,1,2,3,4,5,5,6,7,8};
+    return &images[map[kind%10]];
 }

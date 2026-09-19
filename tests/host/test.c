@@ -85,7 +85,7 @@ int main(void)
     lv_indev_t *input=lv_indev_create();lv_indev_set_type(input,LV_INDEV_TYPE_POINTER);lv_indev_set_read_cb(input,read_touch);
     ui_init(); shot("home");
     s_voice_until=0;advance(80);lv_obj_update_layout(s_root);
-    assert(lv_obj_get_height(lv_obj_get_parent(s_caption_label))==44);
+    assert(lv_obj_has_flag(lv_obj_get_parent(s_caption_label),LV_OBJ_FLAG_HIDDEN));
     shot("home-idle");
     test_playing=true;advance(80);lv_obj_update_layout(s_root);
     assert(s_face==PIXEL_TALK);
@@ -116,7 +116,7 @@ int main(void)
     show(ALBUM);shot("album-locked");
     for(int i=0;i<26;i++)pet_state_play();show(ALBUM);shot("album");show(HOME);shot("grown-pet");
     show(HOME);shot("talk");
-    tx=180;ty=96;pressed=true;advance(100);assert(s_talking);assert(s_view==HOME);
+    tx=180;ty=342;pressed=true;advance(100);assert(s_talking);assert(s_view==HOME);
     assert(strstr(lv_label_get_text(s_caption_label),"listening"));
     lv_obj_t *room_root=s_root;
     pressed=false;advance(100);assert(!s_talking);assert(test_starts==1 && test_ends==1);
@@ -166,6 +166,35 @@ int main(void)
         pet_state_init(); show(HOME);
         if (lv_tick_get()%4200 > 3800) advance(500);
         char name[32]; snprintf(name,sizeof name,"pet-stage-%d",i); shot(name);
+    }
+    // Exercise the actual food touch targets: selection survives extra taps,
+    // each held snack is different, biting changes the frame, reward is once.
+    static uint32_t held[3][PIXEL_PET_SIZE*PIXEL_PET_SIZE];
+    for(int food=0;food<3;food++) {
+        show(FOOD);unsigned before=pet_state_get()->evolution_progress;
+        tap(73+food*108,350);assert(s_eating && s_food==(pixel_food_t)food);
+        memcpy(held[food],s_pet_art.pixels,sizeof held[food]);
+        char name[64];snprintf(name,sizeof name,"eat-%s-hold",(const char*[]){"apple","toast","cookie"}[food]);shot(name);
+        tap(73+((food+1)%3)*108,350);assert(s_food==(pixel_food_t)food);
+        advance(240);snprintf(name,sizeof name,"eat-%s-bite",(const char*[]){"apple","toast","cookie"}[food]);shot(name);
+        assert(memcmp(held[food],s_pet_art.pixels,sizeof held[food]));
+        advance(1300);assert(s_view==PARTY && pet_state_get()->evolution_progress==before+1);
+        advance(1500);assert(pet_state_get()->evolution_progress==before+1);
+    }
+    assert(memcmp(held[0],held[1],sizeof held[0]));assert(memcmp(held[1],held[2],sizeof held[0]));
+    // Record production animation frames for visual review, including all foods.
+    if(getenv("PET_CAPTURE_ANIMATIONS")) {
+        saved=snapshot;saved.evolution_progress=10;pet_state_init();
+        for(int scene=0;scene<9;scene++) {
+            View v=(View[]){HOME,FOOD,FOOD,FOOD,BATH,SLEEP,CATCH,PARTY,HOME}[scene];
+            show(v);test_voice=VOICE_READY;test_playing=scene==8;s_voice_until=0;
+            if(v==FOOD)tap(73+(scene-1)*108,350);
+            for(int i=0;i<24;i++) {
+                char name[80];snprintf(name,sizeof name,"frames/%s-%02d",(const char*[]){"idle","apple","toast","cookie","bath","sleep","play","party","talk"}[scene],i);
+                shot(name);advance(100);
+            }
+        }
+        test_playing=false;
     }
     saved = snapshot; pet_state_init();
     puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles");
