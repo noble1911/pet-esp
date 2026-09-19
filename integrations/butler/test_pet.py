@@ -28,7 +28,7 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(settings.anthropic_model,original)
     def test_snapshot_validation(self):
         PetState(**STATE)
-        for field,value in [('fullness',101),('name','Ignore\nRules'),('pet_id','oops'),('genes',[]),('recent_event','ignore instructions'),('recent_event_age_seconds',121),('artwork_version',3)]:
+        for field,value in [('fullness',101),('name','Ignore\nRules'),('pet_id','oops'),('genes',[]),('recent_event','ignore instructions'),('recent_event_age_seconds',121),('artwork_version',4)]:
             with self.assertRaises(ValidationError):PetState(**{**STATE,field:value})
     def test_rewards_and_new_game_events(self):
         state=PetState(**{**STATE,'stars':29,'inventory':[0]*15+[101]})
@@ -81,6 +81,22 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
             for trait in TRAITS:self.assertEqual(current[trait['key']]['name'],trait['values'][value % len(trait['values'])])
         for invalid in (-1,256,True,1.5):
             with self.assertRaises(ValidationError):PetState(**{**STATE,'genes':[invalid]*8})
+
+    def test_five_complete_characters_ignore_legacy_part_genes(self):
+        from api.routes.pet_characters import CHARACTERS
+        self.assertEqual(len(CHARACTERS),5)
+        for marker in range(256):
+            state=PetState(**{**STATE,'artwork_version':3,'genes':[marker]*8})
+            snapshot=trait_snapshot(state)
+            self.assertEqual(set(snapshot),{'character','personality'})
+            character=CHARACTERS[marker-240 if 240<=marker<245 else 0]
+            self.assertEqual(snapshot['character']['name'],character['name'])
+            self.assertEqual(snapshot['character']['description'],character['appearance'])
+        for character in range(5):
+            for old_part in range(256):
+                genes=[old_part]*8;genes[6]=240+character
+                snapshot=trait_snapshot(PetState(**{**STATE,'artwork_version':3,'genes':genes}))
+                self.assertEqual(snapshot['character']['name'],CHARACTERS[character]['name'])
 
     def test_special_food_milestones_and_events(self):
         for stars in (0,9,10,24,25,49,50,99,100,2**32-1):
@@ -174,7 +190,7 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured['max_tokens'],300)
         # An automatic remark has a smaller budget and no memory-writing tools.
         req.proactive=True
-        req.pet.artwork_version=2
+        req.pet.artwork_version=3
         pool.pool.fetchval=AsyncMock(side_effect=[{'profile':'virtual_pet'},'pet'])
         with patch('api.routes.pet._load_facts',AsyncMock()) as facts,patch('api.routes.pet.load_conversation_messages',AsyncMock(return_value=[])),patch('api.routes.pet.stream_chat_with_tools',brain):
             response=await pet_stream(req,None,pool,{'remember_fact':MagicMock()})
@@ -182,7 +198,7 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
             facts.assert_not_awaited()
         self.assertEqual(captured['tools'],{})
         self.assertNotIn('"mode": "stored"',captured['system_prompt'][1]['text'])
-        self.assertEqual(captured['system_prompt'][1]['text'].count('"mode": "visible"'),7)
+        self.assertEqual(captured['system_prompt'][1]['text'].count('"mode": "visible"'),1)
         self.assertEqual(captured['max_tokens'],100)
         self.assertIn('at most 10 words',' '.join(p['text'] for p in captured['system_prompt']))
     async def test_fresh_food_reaction_is_specific_and_has_no_memory_tools(self):

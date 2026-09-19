@@ -48,7 +48,7 @@ static unsigned s_hits, s_last_target;
 static bool s_eating, s_muted;
 static bool s_power_pending, s_power_sent;
 static uint32_t s_power_poll, s_power_at, s_power_ready_at;
-static unsigned s_profile_page, s_trait_gene, s_trait_variant;
+static unsigned s_trait_gene, s_trait_variant;
 static unsigned s_album_page, s_hiding, s_weather_mode;
 static lv_obj_t *s_keepsakes[5], *s_keepsake_label;
 static uint32_t s_keepsake_started, s_keepsake_until;
@@ -412,20 +412,24 @@ static void decorate_cb(lv_event_t *e)
     if(!ok) {lv_label_set_text(s_hint,"Couldn't save. Please try again.");return;}
     audio_play(SFX_GIFT);show(DECORATIONS);
 }
-static void profile_page_cb(lv_event_t *e)
+static void choose_character_cb(lv_event_t *e)
 {
-    (void)e;s_profile_page^=1;show(PROFILE);
+    (void)e;
+    if(!pet_state_set_character(s_trait_variant)) {
+        lv_label_set_text(s_hint,"Couldn't save. Please try again.");return;
+    }
+    voice_cancel();audio_play(SFX_GIFT);show(PROFILE);
 }
 static void trait_open_cb(lv_event_t *e)
 {
     s_trait_gene=(unsigned)(uintptr_t)lv_event_get_user_data(e);
-    s_trait_variant=pet_trait_choice(pet_state_get(),s_trait_gene);show(TRAIT);
+    s_trait_variant=s_trait_gene==0?pet_character_id(pet_state_get()):pet_trait_choice(pet_state_get(),s_trait_gene);show(TRAIT);
 }
 static void trait_browse_cb(lv_event_t *e)
 {
-    const pet_trait_t *t=pet_trait(s_trait_gene);
+    unsigned count=s_trait_gene==0?PET_CHARACTER_COUNT:pet_trait(s_trait_gene)->count;
     int delta=(int)(intptr_t)lv_event_get_user_data(e);
-    s_trait_variant=(s_trait_variant+t->count+delta)%t->count;show(TRAIT);
+    s_trait_variant=(s_trait_variant+count+delta)%count;show(TRAIT);
 }
 static void trait_portrait(int x,int y,const Pet *p)
 {
@@ -459,37 +463,38 @@ static void make_profile(void)
     const pet_trait_t *personality=pet_trait(GENE_PERSONALITY);
     snprintf(text,sizeof text,"%s little friend",personality->values[pet_trait_choice(p,GENE_PERSONALITY)]);
     label(s_root,text,166,180,182,false);
-    label(s_root,"Tap a trait to explore",24,221,320,false);
-    static const unsigned genes[8]={GENE_BODY_COLOR,GENE_PERSONALITY,GENE_BODY_SHAPE,GENE_EYE_SHAPE,
-                                   GENE_EYE_COLOR,GENE_EAR_SHAPE,GENE_MOUTH_SHAPE,GENE_PATTERN};
-    for(unsigned i=0;i<4;i++) {
-        unsigned gene=genes[s_profile_page*4+i];const pet_trait_t *t=pet_trait(gene);
-        lv_obj_t *card=button(s_root,24+(i%2)*166,247+(i/2)*62,154,54,
-            strcmp(t->mode,"stored")?MINT:0xeee9df,trait_open_cb,(int)gene);
-        label(card,t->label,0,7,154,false);
-        label(card,t->values[pet_trait_choice(p,gene)],0,29,154,false);
-    }
-    label(s_root,"My little details make me unique!",16,372,336,false);
-    lv_obj_t *prev=button(s_root,24,397,62,44,BLUE,profile_page_cb,0);label(prev,LV_SYMBOL_LEFT,0,10,62,true);
-    snprintf(text,sizeof text,"Traits %u / 2",s_profile_page+1);label(s_root,text,94,411,180,false);
-    lv_obj_t *next=button(s_root,282,397,62,44,BLUE,profile_page_cb,0);label(next,LV_SYMBOL_RIGHT,0,10,62,true);
+    label(s_root,"Your little friend",24,221,320,false);
+    lv_obj_t *card=button(s_root,24,247,320,64,MINT,trait_open_cb,0);
+    label(card,"Choose character",0,8,320,false);
+    label(card,pet_character(pet_character_id(p))->name,0,34,320,false);
+    card=button(s_root,24,327,320,64,BLUE,trait_open_cb,GENE_PERSONALITY);
+    label(card,"Personality",0,8,320,false);
+    label(card,personality->values[pet_trait_choice(p,GENE_PERSONALITY)],0,34,320,false);
+    label(s_root,"Five little friends to choose from",16,412,336,false);
 }
 static void make_trait(void)
 {
-    const Pet *p=pet_state_get();const pet_trait_t *t=pet_trait(s_trait_gene);char text[80];
-    header_to(t->label,PROFILE);
-    label(s_root,t->values[s_trait_variant],24,86,320,true);
-    bool mine=s_trait_variant==pet_trait_choice(p,s_trait_gene);
+    const Pet *p=pet_state_get();bool character=s_trait_gene==0;char text[80];
+    const pet_trait_t *t=pet_trait(GENE_PERSONALITY);
+    const pet_character_t *c=pet_character(character?s_trait_variant:pet_character_id(p));
+    unsigned count=character?PET_CHARACTER_COUNT:t->count;
+    header_to(character?"Character":"Personality",PROFILE);
+    label(s_root,character?c->name:t->values[s_trait_variant],24,86,320,true);
+    bool mine=s_trait_variant==(character?pet_character_id(p):pet_trait_choice(p,GENE_PERSONALITY));
     label(s_root,mine?"This one is mine!":"Just looking - your pet stays the same",16,116,336,false);
     Pet preview=*p;
-    if(s_trait_gene!=GENE_PERSONALITY)preview.genes[s_trait_gene]=(uint8_t)s_trait_variant;
+    if(character)preview.genes[GENE_PATTERN]=(uint8_t)(PET_CHARACTER_MARKER+s_trait_variant);
     trait_portrait(112,138,&preview);
-    label(s_root,t->descriptions[s_trait_variant],24,291,320,false);
-    label(s_root,!strcmp(t->mode,"stored")?"Saved trait - not shown in my picture":
-        s_trait_gene==GENE_PERSONALITY?"My personality helps shape my chats":"Look at the different styles with the arrows",16,353,336,false);
-    lv_obj_t *prev=button(s_root,24,395,62,46,BLUE,trait_browse_cb,-1);label(prev,LV_SYMBOL_LEFT,0,12,62,true);
-    snprintf(text,sizeof text,"%u / %u",s_trait_variant+1,t->count);label(s_root,text,94,410,180,false);
-    lv_obj_t *next=button(s_root,282,395,62,46,BLUE,trait_browse_cb,1);label(next,LV_SYMBOL_RIGHT,0,12,62,true);
+    label(s_root,character?c->description:t->descriptions[s_trait_variant],24,285,320,false);
+    s_hint=label(s_root,character?"Your name and stars stay the same.":"My personality helps shape my chats",16,327,336,false);
+    if(character) {
+        lv_obj_t *choose=button(s_root,66,350,236,38,MINT,choose_character_cb,0);
+        label(choose,mine?"My character":"Choose this character",0,10,236,false);
+        if(mine)lv_obj_add_state(choose,LV_STATE_DISABLED);
+    }
+    lv_obj_t *prev=button(s_root,24,397,62,44,BLUE,trait_browse_cb,-1);label(prev,LV_SYMBOL_LEFT,0,10,62,true);
+    snprintf(text,sizeof text,"%u / %u",s_trait_variant+1,count);label(s_root,text,94,411,180,false);
+    lv_obj_t *next=button(s_root,282,397,62,44,BLUE,trait_browse_cb,1);label(next,LV_SYMBOL_RIGHT,0,10,62,true);
 }
 static void make_album(void)
 {

@@ -4,6 +4,7 @@
 
 #include "pet_state.h"
 #include "pet_traits_data.h"
+#include "pet_characters_data.h"
 
 #include <string.h>
 #include <time.h>
@@ -24,6 +25,16 @@ unsigned pet_trait_choice(const Pet *pet, unsigned gene)
 {
     const pet_trait_t *t=pet_trait(gene);
     return pet && t ? pet->genes[gene]%t->count : 0;
+}
+
+const pet_character_t *pet_character(unsigned index)
+{
+    return index<PET_CHARACTER_COUNT?&CHARACTERS[index]:NULL;
+}
+unsigned pet_character_id(const Pet *pet)
+{
+    unsigned stored=pet?pet->genes[GENE_PATTERN]:0;
+    return stored>=PET_CHARACTER_MARKER && stored<PET_CHARACTER_MARKER+PET_CHARACTER_COUNT ? stored-PET_CHARACTER_MARKER : 0;
 }
 
 // Gentle active-time needs. Offline time is paused; needs never fall below 20.
@@ -230,6 +241,16 @@ bool pet_state_reset(void)
     s_have_pet = true;
     memset(s_decay_acc, 0, sizeof(s_decay_acc));
     ESP_LOGI(TAG, "reset: rolled fresh pet");
+    return true;
+}
+
+bool pet_state_set_character(unsigned index)
+{
+    if(!s_have_pet || index>=PET_CHARACTER_COUNT)return false;
+    Pet next=s_pet;
+    next.genes[GENE_PATTERN]=(uint8_t)(PET_CHARACTER_MARKER+index);
+    if(!pet_state_save(&next))return false;
+    s_pet=next;
     return true;
 }
 

@@ -1,0 +1,9 @@
+Use case: stylized-concept. Production WHOLE CHARACTER eating-animation atlas, for the exact PEBBLE PENGUIN in reference. Preserve its sky-blue round body, cream face and tummy, little blue head feather, orange beak and feet, little flippers, black bead eyes, plum outline and pink cheeks. All facial features are painted into each full character; no separate parts.
+ONE square atlas, 1536x1536, strict FOUR columns x FOUR rows, equal square cells. Uniform solid chroma magenta #FF00FF background. No text, cell borders, UI, scene, floor shadows. Each full penguin fits completely in its cell. ALL frames SAME scale, front-facing with fixed eye spacing and head position, feet on common baseline 90% down each cell. Same sitting body across food frames, with little flippers holding snack at belly and delighted CLOSED smiling eyes. Chunky pixel art suited to reduction to 72px. Food identity must be obvious.
+Rows 1 and 2 are HOLD / about to bite, small open smiling mouth.
+Row1 left to right: whole red apple with green leaf; whole buttered golden toast; whole round chocolate chip cookie; purple-wrapper pink-frosted cupcake topped with a yellow star.
+Row2: little stack of golden pancakes with red berries; small rainbow jelly dome on plate; pink-frosted layered cake slice with one blue candle; final cell EMPTY magenta.
+Rows 3 and 4 match EXACT same food order and penguin positions but are BITE / munching poses: eyes still happily closed, mouth small closed chew, flippers lift food slightly. Each snack has a large clear bite missing from its right edge; candle remains on cake, berries remain on pancakes, star remains on cupcake.
+Row3: bitten apple; bitten toast; bitten cookie; bitten star cupcake.
+Row4: bitten berry pancakes; bitten rainbow jelly; bitten cake slice; final cell EMPTY magenta.
+Exactly FOURTEEN complete creature-with-food sprites, two empty cells. Keep blue feathers distinct from food. No extra foods or props.

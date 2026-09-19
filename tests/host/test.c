@@ -71,11 +71,11 @@ static void shot(const char *name) {
     char path[256];snprintf(path,sizeof path,"%s.ppm",name);FILE *f=fopen(path,"wb");assert(f);
     fprintf(f,"P6\n368 448\n255\n");for(int i=0;i<368*448;i++) { unsigned char b[]={pixels[i]>>16,pixels[i]>>8,pixels[i]};fwrite(b,1,3,f); }fclose(f);
 }
-#include "genetics_checks.h"
+#include "character_checks.h"
 int main(void)
 {
-    genetics_checks();
-    if(getenv("PET_CAPTURE_GENETICS"))return 0;
+    character_checks();
+    if(getenv("PET_CAPTURE_CHARACTERS"))return 0;
     pet_state_init(); assert(pet_state_get()->hunger==100);
     uint32_t tick=pet_state_get()->last_tick;
     pet_state_tick(tick+179);assert(pet_state_get()->hunger==100);
@@ -175,13 +175,13 @@ int main(void)
     audio_set_volume(35);show(SETTINGS);
     // Repeated navigation catches dangling object pointers/timers.
     for(int i=0;i<100;i++){show((View)(i%14));advance(80);show(HOME);advance(80);}
-    // Review every coat and all five stages with production geometry.
+    // Review every whole character and all five stages with production geometry.
     Pet snapshot = saved;
-    for (int i=0; i<6; i++) {
-        saved = snapshot; saved.genes[GENE_BODY_COLOR] = i;
+    for (int i=0; i<5; i++) {
+        saved = snapshot; saved.genes[GENE_PATTERN] = PET_CHARACTER_MARKER+i;
         saved.evolution_progress = 0; pet_state_init(); show(HOME);
         if (lv_tick_get()%4200 > 3800) advance(500);
-        char name[32]; snprintf(name,sizeof name,"pet-coat-%d",i); shot(name);
+        char name[32]; snprintf(name,sizeof name,"pet-character-%d",i); shot(name);
     }
     const unsigned milestones[] = {0,10,30,60,100};
     for (int i=0; i<5; i++) {
@@ -511,72 +511,34 @@ int main(void)
     assert(pet_state_eat(6));assert(pet_state_get()->hunger==80 && pet_state_get()->happiness==100);
     saved.evolution_progress=UINT32_MAX;pet_state_init();assert(pet_state_eat(6));
     assert(pet_state_get()->evolution_progress==UINT32_MAX && pet_state_get()->hunger==100);
-    // Regression: eating used to leave a rectangular yellow belly on every
-    // coloured coat. Both frames must recolour that fur while retaining food.
-    for(unsigned food=0;food<PET_FOOD_COUNT;food++)for(unsigned pose=0;pose<2;pose++) {
-        pixel_pet_art_t a,b;Pet p=*pet_state_get();p.stage=PET_STAGE_CHILD;p.genes[GENE_BODY_COLOR]=0;
-        pixel_pet_render(&a,&p,PIXEL_EAT,pose?4:0,(pixel_food_t)food);
-        for(unsigned coat=1;coat<16;coat++) {
-            p.genes[GENE_BODY_COLOR]=coat;
-            pixel_pet_render(&b,&p,PIXEL_EAT,pose?4:0,(pixel_food_t)food);
-            unsigned recoloured_belly=0;
-            for(int y=40;y<72;y++)for(int x=23;x<50;x++)
-                recoloured_belly+=a.pixels[y*72+x]!=b.pixels[y*72+x];
-            assert(recoloured_belly>20);
-            // Food centres and highlights are stable, including golden toast,
-            // pancakes, cake sponge and the cupcake's yellow star topper.
-            for(int y=51;y<=58;y++)for(int x=32;x<=38;x++)
-                assert(a.pixels[y*72+x]==b.pixels[y*72+x]);
-            if(food==3)assert(a.pixels[46*72+35]==b.pixels[46*72+35]);
-        }
+    // Character selection is explicit and transactional; arrows only preview.
+    saved=food_base;pet_state_init();
+    Pet before_character=*pet_state_get(), before_disk=saved;
+    show(HOME);tap(320,275);assert(s_view==SETTINGS);tap(262,369);assert(s_view==PROFILE);shot("character-profile");
+    tap(180,277);assert(s_view==TRAIT && s_trait_gene==0);unsigned start=s_trait_variant;
+    tap(50,418);assert(s_trait_variant==(start+4)%5);tap(310,418);assert(s_trait_variant==start);
+    for(unsigned c=0;c<5;c++) {
+        Pet preview=*pet_state_get();pixel_pet_art_t expected;preview.genes[GENE_PATTERN]=PET_CHARACTER_MARKER+s_trait_variant;
+        pixel_pet_render(&expected,&preview,PIXEL_IDLE,12,0);assert(!memcmp(expected.pixels,s_pet_art.pixels,sizeof expected.pixels));
+        char name[64];snprintf(name,sizeof name,"choose-character-%u",s_trait_variant);shot(name);tap(310,418);
     }
-    saved.genes[GENE_BODY_COLOR]=5;pet_state_init();
-    for(unsigned food=0;food<PET_FOOD_COUNT;food++) {
-        show(FOOD);start_food(food,NULL);advance(100);
-        char name[64];snprintf(name,sizeof name,"blue-food-%u-hold",food);shot(name);
-        advance(650);snprintf(name,sizeof name,"blue-food-%u-bite",food);shot(name);
-    }
-    saved=food_base;pet_state_init();show(HOME);
-    // Every saved gene can be explored without applying the preview or saving.
-    assert(!pet_trait(8) && !pet_trait(999));
-    for(unsigned gene=0;gene<8;gene++) {
-        const pet_trait_t *t=pet_trait(gene);assert(t && t->count>0 && t->count<=16);
-        for(unsigned value=0;value<256;value++) {
-            Pet variant=*pet_state_get();variant.genes[gene]=(uint8_t)value;
-            unsigned choice=pet_trait_choice(&variant,gene);
-            assert(choice<t->count && t->values[choice] && t->descriptions[choice]);
-            if(gene==GENE_BODY_COLOR)assert(choice==value%16);
-        }
-    }
-    Pet before_traits=*pet_state_get(), saved_before_traits=saved;
-    s_profile_page=0;show(HOME);shot("traits-home");tap(320,275);assert(s_view==SETTINGS);tap(262,369);assert(s_view==PROFILE);shot("profile-1");
-    tap(310,416);assert(s_profile_page==1);shot("profile-2");
-    tap(50,416);assert(s_profile_page==0);
-    for(unsigned page=0;page<2;page++) {
-        for(unsigned card=0;card<4;card++) {
-            tap(100+(card%2)*166,272+(card/2)*62);assert(s_view==TRAIT);
-            char name[64];snprintf(name,sizeof name,"trait-%u",s_trait_gene);shot(name);
-            unsigned start=s_trait_variant;const pet_trait_t *t=pet_trait(s_trait_gene);
-            tap(50,418);assert(s_trait_variant==(start+t->count-1)%t->count);
-            tap(310,418);assert(s_trait_variant==start);
-            for(unsigned choice=0;choice<t->count;choice++) {
-                Pet preview=*pet_state_get();pixel_pet_art_t expected;
-                if(s_trait_gene!=GENE_PERSONALITY)preview.genes[s_trait_gene]=(uint8_t)s_trait_variant;
-                pixel_pet_render(&expected,&preview,PIXEL_IDLE,12,PIXEL_APPLE);
-                assert(!memcmp(expected.pixels,s_pet_art.pixels,sizeof expected.pixels));
-                snprintf(name,sizeof name,"trait-%u-choice-%u",s_trait_gene,s_trait_variant);shot(name);
-                tap(310,418);
-            }
-            assert(s_trait_variant==start);
-            tap(48,46);assert(s_view==PROFILE && s_profile_page==page);
-        }
-        tap(310,416);
-    }
-    assert(pet_state_get()->pet_id==before_traits.pet_id);
-    assert(!memcmp(pet_state_get()->genes,before_traits.genes,8));
-    assert(pet_state_get()->evolution_progress==before_traits.evolution_progress);
-    assert(!memcmp(&saved,&saved_before_traits,sizeof saved));
-    tap(48,46);assert(s_view==SETTINGS);tap(48,46);assert(s_view==HOME);
+    assert(s_trait_variant==start && !memcmp(&before_disk,&saved,sizeof saved));
+    assert(!memcmp(&before_character,pet_state_get(),sizeof before_character));
+    tap(310,418);unsigned choice=s_trait_variant;
+    fail_save=true;tap(180,368);assert(s_view==TRAIT && strstr(lv_label_get_text(s_hint),"Couldn't save"));
+    assert(!memcmp(&before_disk,&saved,sizeof saved) && !memcmp(&before_character,pet_state_get(),sizeof before_character));
+    fail_save=false;tap(180,368);assert(s_view==PROFILE && pet_character_id(pet_state_get())==choice);
+    before_character.genes[GENE_PATTERN]=PET_CHARACTER_MARKER+choice;
+    assert(!memcmp(&before_character,pet_state_get(),sizeof before_character));
+    assert(!memcmp(&before_character,&saved,sizeof before_character));
+    pet_state_init();assert(pet_character_id(pet_state_get())==choice);
+    assert(!pet_state_set_character(5) && !pet_state_set_character(255));
+    // Personality browsing remains informative and cannot change the pet.
+    show(PROFILE);tap(180,357);assert(s_view==TRAIT && s_trait_gene==GENE_PERSONALITY);
+    before_disk=saved;unsigned personality=s_trait_variant;
+    for(unsigned c=0;c<8;c++)tap(310,418);
+    assert(s_trait_variant==personality && !memcmp(&before_disk,&saved,sizeof saved));
+    tap(48,46);assert(s_view==PROFILE);tap(48,46);assert(s_view==SETTINGS);tap(48,46);assert(s_view==HOME);
     // Start fresh is a two-step destructive action; opening/cancelling is safe.
     saved=snapshot;saved.evolution_progress=90;saved.inventory[15]=105;
     strcpy(saved.name,"Clover");pet_state_init();
@@ -636,7 +598,7 @@ int main(void)
     advance(900);s_muted=true;audio_set_muted(true);test_power_press=true;advance(2100);
     assert(s_view==HOME && test_audio_muted);s_muted=false;audio_set_muted(false);
     assert(pet_state_get()->pet_id==before_sleep.pet_id && pet_state_get()->evolution_progress==before_sleep.evolution_progress);
-    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; all eight traits, preview wraparound and unchanged genes/save; milestone foods, sixteen coats without yellow eating patches, paced meals, fades, compact mic, expanded back targets, PWR save/cancel/error recovery, reactive ball arcs and delayed fifth-bounce reward, cancel, failed saves and capped bonuses");
+    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; five whole characters, preview wraparound and transactional choice; milestone foods with original painted colours, paced meals, fades, compact mic, expanded back targets, PWR save/cancel/error recovery, reactive ball arcs and delayed fifth-bounce reward, cancel, failed saves and capped bonuses");
     lv_deinit();
     return 0;
 }

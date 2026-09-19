@@ -1,26 +1,27 @@
-# Gene specification
+# Character identity and legacy gene storage
 
-Expands [architecture.md §6](architecture.md). The architecture doc is
-authoritative; this file is the working reference for the `pet_state`
-component and the sprite forge.
+## Current artwork version 3
 
-## Current illustrated sprite build
+The active renderer uses five independently illustrated, complete characters.
+There are no separately rendered eyes, mouths, ears, markings, colour tints or
+body reshaping. See [five characters](five-characters-v1.md).
 
-All seven appearance bytes are rendered: eight body profiles, sixteen coats,
-eight eye styles, sixteen iris colours, eight ears/tufts, eight smiles and eight
-markings. Personality remains voice/behaviour context, not appearance. The
-illustrated action poses retain closed eyes during blinks, naps and delighted
-munches; food and care props can cover markings. Growth keepsakes depend on life
-stage. See [genetic sprites](genetic-sprites-v1.md) for the palette compatibility,
-pose coverage, previews and rollback.
+The existing eight-byte `Pet.genes` field and NVS schema remain unchanged for
+save compatibility. Byte 6 values 240–244 explicitly select Sprout, Cloud bunny,
+Pebble penguin, Peach kitten and Tiny dragon. Every other value selects Sprout,
+so an existing save returns to the original artwork without a reset or write.
+Byte 7 modulo 8 still selects the personality used in voice context. Other
+appearance bytes are retained but have no effect on current graphics.
 
-`data/pet_traits.json` is the shared catalogue. Run
-`python3 scripts/generate_pet_traits.py` after editing it, or `--check` to verify.
-`data/pet_traits_legacy.json` is frozen for voice snapshots from older firmware.
-Firmware artwork version 2 selects the current catalogue on the backend;
-missing version selects the old six-colour mapping and dormant appearance traits.
+Options → My pet → Choose character applies an explicit saved choice. Previewing
+never changes the pet. Name, identity, needs, personality and progress survive.
+The new character catalogue is `data/pet_characters.json`; regenerate with
+`python3 scripts/generate_pet_characters.py`. Legacy trait catalogues remain
+for personality and backend compatibility with artwork versions 1 and 2.
+Breeding and part-based evolution described below are historical design notes,
+not active features of the five-character version.
 
-## Gene vector
+## Historical gene vector (artwork versions 1–2)
 
 Exactly **8 bytes**, stored in `Pet.genes[8]`. Each byte indexes a part
 table or palette. Out-of-range values are reduced modulo the table size at

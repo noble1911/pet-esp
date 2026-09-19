@@ -1,5 +1,7 @@
 # Genetic sprites v1
 
+**Historical release:** superseded by [five complete characters](five-characters-v1.md). Appearance parts and trait browsing are no longer used by current firmware. The details below document the older release.
+
 All seven appearance genes are active in the illustrated renderer. The eight
 personality values still affect gentle voice context, not physical appearance.
 Saved genes, pet identity, rewards, needs and NVS schema are unchanged.

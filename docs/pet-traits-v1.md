@@ -1,5 +1,7 @@
 # My pet and traits
 
+**Historical release:** superseded by [five complete characters](five-characters-v1.md). Appearance parts and trait browsing are no longer used by current firmware. The details below document the older release.
+
 **Superseded artwork:** [Genetic sprites v1](genetic-sprites-v1.md) activates all
 appearance traits, 16 coats and live previews. This document records the earlier
 six-colour release and its original validation.

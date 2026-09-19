@@ -68,7 +68,7 @@ static void add_pet(cJSON *o,const Command *c)
     snprintf(id,sizeof(id),"%016llx",(unsigned long long)p->pet_id);
     cJSON_AddStringToObject(j,"pet_id",id);cJSON_AddStringToObject(j,"name",p->name);
     cJSON_AddNumberToObject(j,"stage",p->stage);
-    cJSON_AddNumberToObject(j,"artwork_version",2);
+    cJSON_AddNumberToObject(j,"artwork_version",3);
     cJSON_AddNumberToObject(j,"fullness",p->hunger);cJSON_AddNumberToObject(j,"happiness",p->happiness);
     cJSON_AddNumberToObject(j,"energy",p->energy);cJSON_AddNumberToObject(j,"cleanliness",p->hygiene);
     cJSON_AddNumberToObject(j,"stars",p->evolution_progress);cJSON_AddNumberToObject(j,"generation",p->generation);

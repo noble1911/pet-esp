@@ -78,8 +78,16 @@ typedef struct {
 // Per-byte modulus for the breeding mixer (docs/gene_spec.md).
 extern const uint8_t PET_GENE_MAX[8];
 
-// Read-only trait catalogue. Display choices can share the same look (the
-// 16 stored coat genes currently map to six colours). No save/schema changes.
+// The old eight-byte genes and trait catalogue remain for save/wire rollback.
+// Current appearance is one complete character; personality still uses byte 7.
+#define PET_CHARACTER_COUNT 5
+#define PET_CHARACTER_MARKER 240
+typedef struct { const char *name, *description; } pet_character_t;
+const pet_character_t *pet_character(unsigned index);
+unsigned pet_character_id(const Pet *pet); // unmarked legacy saves use original Sprout
+bool pet_state_set_character(unsigned index); // save first; preserves all progress
+
+// Legacy appearance catalogue; personality is the only active trait card.
 typedef struct {
     const char *label, *mode;
     unsigned count;
