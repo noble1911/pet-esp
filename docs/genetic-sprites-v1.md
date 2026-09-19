@@ -52,8 +52,13 @@ and the rest of Butler are unchanged.
   and browsing preserve saved state. The existing game/reward/power suite passes.
 - Fifteen Butler tests cover both artwork versions, all gene bytes, actual
   prompt context, memory isolation and the request-scoped Haiku override.
-- ESP-IDF build passes with 39% app flash free. Physical display/performance
-  testing remains pending: the ESP was disconnected and was **not flashed**.
+- ESP-IDF build passes with 39% app flash free. Flashed over USB on 2026-09-19
+  after the device was reconnected; all four writes passed hash verification.
+  A 20-second serial capture confirmed app version `genetic-sprites-v1`, Olive's
+  existing identity `6266ea62beb19b67`, stage 2 and saved needs (77/82/86/88),
+  display/touch/LVGL, speaker/mic, Wi-Fi and authenticated pet gateway readiness.
+  No panic or boot loop was observed. On-device visual and interaction testing
+  is left to the user; boot verification does not substitute for that test.
 
 [All traits](previews/genetic-sprites-v1/all-traits.png),
 [pose matrix](previews/genetic-sprites-v1/pose-matrix.png),
