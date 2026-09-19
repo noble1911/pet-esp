@@ -1,7 +1,7 @@
 # ui — screens, menus, stat bars, touch handling, emote bubbles
 # (architecture §6 loop / §7.4). Built on LVGL via the renderer component.
 idf_component_register(
-    SRCS "ui.c"
+    SRCS "ui.c" "pixel_pet.c"
     INCLUDE_DIRS "include"
     REQUIRES pet_state renderer radio power audio lvgl__lvgl
 )

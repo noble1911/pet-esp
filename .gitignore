@@ -37,3 +37,7 @@ backup/2026-09-19/*.bin
 docs/previews/little-meadow/*.ppm
 
 backup/vector-v1/*.bin
+
+docs/previews/pixel-v1/*.ppm
+
+releases/pixel-v1/*.bin

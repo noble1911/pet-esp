@@ -8,8 +8,10 @@
 #include "audio.h"
 #include "esp_random.h"
 #include "lvgl.h"
+#include "pixel_pet.h"
+#include "pixel_rooms.h"
 
-#define INK 0x39465c
+#define INK 0x3d203d
 #define CREAM 0xfff9ed
 #define MINT 0xdaf3e5
 #define GOLD 0xffcf57
@@ -18,10 +20,11 @@
 
 typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS } View;
 static View s_view;
-static lv_obj_t *s_root, *s_pet, *s_eyes[2], *s_bars[4], *s_target, *s_counter;
+static lv_obj_t *s_root, *s_pet, *s_bars[4], *s_target, *s_counter;
 static lv_obj_t *s_dots[5], *s_hint, *s_sleep_bar;
-static lv_obj_t *s_ears[2], *s_closed_eyes[2], *s_pupils[2], *s_paws[2];
-static lv_obj_t *s_smile, *s_open_mouth, *s_pet_heart;
+static lv_obj_t *s_pet_image, *s_pet_heart;
+static pixel_pet_art_t s_pet_art;
+static pixel_face_t s_face;
 static uint32_t s_started, s_hop_until, s_last_tick;
 static unsigned s_hits, s_last_target;
 static bool s_eating, s_muted;
@@ -37,7 +40,8 @@ static lv_obj_t *shape(lv_obj_t *p, int x, int y, int w, int h, uint32_t c, int 
     lv_obj_set_pos(o,x,y); lv_obj_set_size(o,w,h);
     lv_obj_set_style_bg_color(o,lv_color_hex(c),0);
     lv_obj_set_style_bg_opa(o,LV_OPA_COVER,0);
-    lv_obj_set_style_radius(o,r,0);
+    lv_obj_set_style_radius(o,0,0);
+    (void)r;
     lv_obj_remove_flag(o,LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
     return o;
 }
@@ -46,7 +50,11 @@ static lv_obj_t *label(lv_obj_t *p, const char *txt, int x, int y, int w, bool b
     lv_obj_t *o=lv_label_create(p);
     lv_label_set_text(o,txt); lv_obj_set_pos(o,x,y); lv_obj_set_width(o,w);
     lv_obj_set_style_text_color(o,lv_color_hex(INK),0);
-    lv_obj_set_style_text_font(o,big ? &lv_font_montserrat_24 : &lv_font_montserrat_14,0);
+    const lv_font_t *font=big ? &lv_font_unscii_16 : &lv_font_montserrat_14;
+    // UNSCII has no LV_SYMBOL glyphs; preserve readable navigation icons.
+    for(const unsigned char *c=(const unsigned char *)txt;*c;c++)
+        if(*c>=128) { font=big ? &lv_font_montserrat_24 : &lv_font_montserrat_14; break; }
+    lv_obj_set_style_text_font(o,font,0);
     lv_obj_set_style_text_align(o,LV_TEXT_ALIGN_CENTER,0);
     lv_obj_remove_flag(o,LV_OBJ_FLAG_CLICKABLE);
     return o;
@@ -59,7 +67,9 @@ static lv_obj_t *button(lv_obj_t *p,int x,int y,int w,int h,uint32_t c,lv_event_
     lv_obj_set_style_translate_y(o,2,LV_STATE_PRESSED);
     lv_obj_set_style_shadow_color(o,lv_color_hex(0x738e83),0);
     lv_obj_set_style_shadow_opa(o,LV_OPA_20,0);
-    lv_obj_set_style_shadow_width(o,8,0);
+    lv_obj_set_style_shadow_width(o,0,0);
+    lv_obj_set_style_border_color(o,lv_color_hex(INK),0);
+    lv_obj_set_style_border_width(o,2,0);
     lv_obj_set_style_shadow_ofs_y(o,3,0);
     lv_obj_add_event_cb(o,cb,LV_EVENT_CLICKED,(void *)(intptr_t)data);
     return o;
@@ -67,35 +77,21 @@ static lv_obj_t *button(lv_obj_t *p,int x,int y,int w,int h,uint32_t c,lv_event_
 // All icon geometry is native LVGL: crisp at panel resolution, no glyph dependency.
 static void star(lv_obj_t *p,int x,int y,uint32_t c)
 {
-    static const lv_point_precise_t pts[]={{20,0},{25,13},{40,15},{29,25},{32,40},{20,32},{8,40},{11,25},{0,15},{15,13},{20,0}};
-    lv_obj_t *o=lv_line_create(p); lv_line_set_points(o,pts,11);
-    lv_obj_set_pos(o,x,y); lv_obj_set_style_line_color(o,lv_color_hex(c),0);
-    lv_obj_set_style_line_width(o,5,0); lv_obj_set_style_line_rounded(o,true,0);
-    shape(p,x+14,y+14,13,15,c,8);
+    (void)c;
+    lv_obj_t *o=lv_image_create(p);
+    lv_image_set_src(o,pixel_icon(4));lv_image_set_pivot(o,0,0);
+    lv_image_set_scale(o,512);lv_image_set_antialias(o,false);
+    lv_obj_set_pos(o,x,y);
 }
-static void icon(lv_obj_t *p,int kind,int x,int y)
+static void icon(lv_obj_t *p, int kind, int x, int y)
 {
-    if(kind==0) { // apple
-        shape(p,x+8,y+13,29,31,0xef817d,15); shape(p,x+25,y+13,27,31,0xef817d,15);
-        shape(p,x+28,y+2,5,15,INK,2); shape(p,x+33,y+3,17,9,0x66b998,7);
-        shape(p,x+15,y+20,5,11,0xffc1ad,3);
-    } else if(kind==1) { // beach ball
-        shape(p,x+8,y+4,42,42,0xf0ac78,21);
-        shape(p,x+22,y+5,14,40,0xffe4a1,7);
-        shape(p,x+9,y+21,40,9,0xffffff,5);
-    } else if(kind==2) {
-        shape(p,x+9,y+3,39,39,0x8c9fda,20);
-        shape(p,x+24,y-1,30,30,CREAM,16);
-        shape(p,x+43,y+32,5,5,GOLD,3);
-    } else if(kind==3) {
-        shape(p,x+9,y+22,26,26,0x76c5d6,13); shape(p,x+30,y+9,23,23,0x9ad8e5,12);
-        shape(p,x+10,y+3,14,14,0xbee9ef,7); shape(p,x+15,y+27,7,6,0xffffff,4);
-        shape(p,x+35,y+13,6,5,0xffffff,3);
-    } else if(kind==4) star(p,x+9,y+3,GOLD);
-    else { // flower
-        for(int i=0;i<5;i++) { float a=i*6.283185f/5; shape(p,x+21+(int)(14*cosf(a)),y+18+(int)(14*sinf(a)),20,20,PINK,10); }
-        shape(p,x+23,y+20,16,16,GOLD,8);
-    }
+    lv_obj_t *o=lv_image_create(p);
+    lv_image_set_src(o,pixel_icon((unsigned)kind));
+    lv_image_set_pivot(o,0,0);
+    lv_image_set_scale(o,640); // 20 pixels -> 50-pixel touch-button illustration
+    lv_image_set_antialias(o,false);
+    lv_obj_set_pos(o,x+3,y);
+    lv_obj_remove_flag(o,LV_OBJ_FLAG_CLICKABLE);
 }
 static void home_cb(lv_event_t *e) { (void)e; show(HOME); }
 static void nav_cb(lv_event_t *e) { show((View)(intptr_t)lv_event_get_user_data(e)); }
@@ -103,160 +99,40 @@ static void header(const char *title)
 {
     lv_obj_t *b=button(s_root,24,22,48,48,0xffffff,home_cb,0);
     label(b,LV_SYMBOL_LEFT,0,11,48,true);
-    label(s_root,title,80,32,208,true);
+    label(s_root,title,80,32,264,true);
 }
-static void cloud(int x,int y)
+static void room(bool night)
 {
-    shape(s_root,x,y+12,74,22,0xffffff,12); shape(s_root,x+12,y,32,35,0xffffff,16);
-    shape(s_root,x+36,y+7,27,26,0xffffff,14);
+    lv_obj_t *bg=lv_image_create(s_root);
+    lv_image_set_src(bg,night ? &room_night : &room_day);
+    lv_image_set_pivot(bg,0,0); lv_image_set_scale(bg,512);
+    lv_image_set_antialias(bg,false); lv_obj_set_pos(bg,0,56);
 }
-static void meadow(void)
-{
-    shape(s_root,0,0,368,448,0xe7f5ef,0);
-    shape(s_root,277,90,46,46,0xffe5a2,23);
-    cloud(24,100); cloud(212,157);
-    shape(s_root,-90,262,370,180,0xc2e4ce,180);
-    shape(s_root,160,252,320,190,0xb2d9c0,160);
-    shape(s_root,0,314,368,134,0xb2d9c0,0);
-    shape(s_root,87,298,196,33,0x95c5af,17);
-    for(int i=0;i<6;i++) {
-        int x=26+i*61, y=306+(i%2)*25;
-        shape(s_root,x,y,4,13,0x7cac8b,2);
-        shape(s_root,x-4,y-3,12,7,i%2 ? CREAM : 0xffdea0,5);
-    }
-}
+static void meadow(void) { room(false); }
 static void pet_tap(lv_event_t *e)
 {
     (void)e; s_hop_until=lv_tick_get()+600;
     if(s_hint) lv_label_set_text(s_hint,"I love you!");
     audio_play(SFX_FEED);
 }
-// The pet is drawn at native panel resolution. Shared geometry keeps every
-// expression and growth accessory inside the same touch target.
-static lv_obj_t *pet_part(lv_obj_t *parent, int x, int y, int w, int h,
-                          uint32_t light, uint32_t base, uint32_t edge, int radius)
-{
-    lv_obj_t *o = shape(parent, x, y, w, h, light, radius);
-    lv_obj_set_style_bg_grad_color(o, lv_color_hex(base), 0);
-    lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_VER, 0);
-    lv_obj_set_style_border_color(o, lv_color_hex(edge), 0);
-    lv_obj_set_style_border_width(o, 2, 0);
-    return o;
-}
-
-static lv_obj_t *pet_curve(lv_obj_t *parent, int x, int y, int w, int h,
-                           uint32_t color, int start, int end, int thickness)
-{
-    lv_obj_t *o = lv_arc_create(parent);
-    lv_obj_remove_style_all(o);
-    lv_obj_set_pos(o, x, y);
-    lv_obj_set_size(o, w, h);
-    lv_arc_set_bg_angles(o, start, end);
-    lv_obj_set_style_arc_color(o, lv_color_hex(color), LV_PART_MAIN);
-    lv_obj_set_style_arc_opa(o, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(o, thickness, LV_PART_MAIN);
-    lv_obj_set_style_arc_rounded(o, true, LV_PART_MAIN);
-    lv_obj_set_style_arc_opa(o, LV_OPA_TRANSP, LV_PART_INDICATOR);
-    lv_obj_remove_flag(o, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    return o;
-}
-
 static void make_pet(int x, int y)
 {
-    const Pet *pet = pet_state_get();
-    // Each coat has a light, midtone and outline, so it reads on both the
-    // pale meadow and dark bedtime screen without a heavy black border.
-    static const uint32_t coats[][3] = {
-        {0xffdfbc, 0xedb98e, 0xbb886f}, {0xdcd4ff, 0xafa3e2, 0x8175b2},
-        {0xc9f0df, 0x8dcdbb, 0x629e91}, {0xffd5e0, 0xeaa5bf, 0xba7b99},
-        {0xffeab2, 0xecc979, 0xb39a5d}, {0xd0eafa, 0x9fc7e3, 0x709cb9}
-    };
-    const uint32_t *c = coats[pet->genes[GENE_BODY_COLOR] % 6];
-    s_pet_x = x - 8;
-    s_pet_y = y - 14;
-    s_pet = shape(s_root, s_pet_x, s_pet_y, 172, 174, 0, 0);
-    lv_obj_set_style_bg_opa(s_pet, LV_OPA_TRANSP, 0);
-    lv_obj_add_flag(s_pet, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(s_pet, pet_tap, LV_EVENT_CLICKED, NULL);
-
-    // One slightly shorter ear gives the silhouette a less mechanical feel.
-    for (int i = 0; i < 2; i++) {
-        s_ears[i] = pet_part(s_pet, i ? 107 : 31, i ? 12 : 3,
-                             35, i ? 68 : 76, c[0], c[1], c[2], 18);
-        lv_obj_set_style_transform_pivot_x(s_ears[i], 17, 0);
-        lv_obj_set_style_transform_pivot_y(s_ears[i], 63, 0);
-        lv_obj_set_style_transform_rotation(s_ears[i], i ? 110 : -90, 0);
-        pet_part(s_ears[i], 9, 10, 17, i ? 44 : 52,
-                 0xffdfe3, 0xf0b7c6, 0xe4a8b8, 10);
-        shape(s_ears[i], 10, 10, 5, 24, 0xffedf0, 3);
-    }
-    pet_part(s_pet, 39, 111, 94, 57, c[0], c[1], c[2], 29);
-    pet_part(s_pet, 51, 121, 70, 39, 0xfff7e5, 0xf4dec5, 0xe3cbb3, 21);
-    // Tail, feet and arms are drawn behind the oversized head.
-    pet_part(s_pet, 128, 122, 23, 25, 0xfff4e6, c[0], c[2], 13);
-    for (int i = 0; i < 2; i++) {
-        lv_obj_t *foot = pet_part(s_pet, i ? 103 : 30, 150, 39, 23,
-                                  c[0], c[1], c[2], 13);
-        shape(foot, 11, 10, 17, 7, 0xf1c5cd, 4);
-        s_paws[i] = pet_part(s_pet, i ? 139 : 9, 111, 24, 33,
-                              c[0], c[1], c[2], 13);
-    }
-    lv_obj_t *head = pet_part(s_pet, 14, 44, 144, 92, c[0], c[1], c[2], 43);
-    // A subtle forehead shine and broad cream muzzle give the face volume.
-    lv_obj_t *shine = shape(head, 26, 7, 53, 12, 0xffffff, 8);
-    lv_obj_set_style_bg_opa(shine, LV_OPA_30, 0);
-    shape(s_pet, 57, 96, 58, 31, 0xfff3df, 17);
-    for (int i = 0; i < 2; i++) {
-        shape(s_pet, i ? 119 : 28, 101, 24, 13, 0xeb9db2, 7);
-        shape(s_pet, i ? 123 : 32, 103, 9, 3, 0xffced8, 2);
-        // Eyes are containers, allowing the pupils to glance independently.
-        s_eyes[i] = shape(s_pet, i ? 105 : 44, 77, 23, 29, 0xfff9ef, 12);
-        s_pupils[i] = shape(s_eyes[i], 2, 1, 20, 27, INK, 10);
-        shape(s_pupils[i], 4, 4, 7, 8, 0xffffff, 4);
-        shape(s_pupils[i], 12, 17, 4, 4, 0xb1c4dc, 2);
-        s_closed_eyes[i] = pet_curve(s_pet, i ? 105 : 44, 84, 23, 17,
-                                     INK, 15, 165, 3);
-        lv_obj_add_flag(s_closed_eyes[i], LV_OBJ_FLAG_HIDDEN);
-    }
-    pet_part(s_pet, 80, 100, 12, 8, 0xbd8190, 0x936273, 0x936273, 5);
-    s_smile = shape(s_pet, 72, 106, 29, 18, 0, 0);
-    lv_obj_set_style_bg_opa(s_smile, LV_OPA_TRANSP, 0);
-    pet_curve(s_smile, 1, 0, 14, 12, INK, 0, 165, 2);
-    pet_curve(s_smile, 13, 0, 14, 12, INK, 15, 180, 2);
-    s_open_mouth = shape(s_pet, 77, 109, 19, 16, INK, 9);
-    shape(s_open_mouth, 4, 9, 12, 6, 0xefabb8, 6);
-    lv_obj_add_flag(s_open_mouth, LV_OBJ_FLAG_HIDDEN);
-
-    if (pet->stage >= PET_STAGE_CHILD) {
-        shape(s_pet, 71, 43, 16, 10, c[0], 7);
-        shape(s_pet, 84, 40, 13, 14, c[0], 7);
-    }
-    // Small accessories sit off the face; the old central flower hid the tuft.
-    if (pet->stage >= PET_STAGE_TEEN) {
-        shape(s_pet, 120, 44, 19, 9, 0x76b99b, 6);
-        for (int i = 0; i < 5; i++) {
-            float a = i * 6.283185f / 5;
-            shape(s_pet, 118 + (int)(9*cosf(a)), 43 + (int)(9*sinf(a)),
-                  13, 13, 0xffc3d3, 7);
-        }
-        pet_part(s_pet, 120, 46, 10, 10, 0xffe6a1, GOLD, 0xe4b24f, 5);
-    }
-    if (pet->stage >= PET_STAGE_ADULT) {
-        pet_part(s_pet, 49, 131, 75, 10, 0xf9c1ce, 0xe39bb1, 0xc7839a, 5);
-        pet_part(s_pet, 111, 137, 13, 22, 0xf9c1ce, 0xe39bb1, 0xc7839a, 4);
-    }
-    if (pet->stage >= PET_STAGE_ELDER) {
-        pet_part(s_pet, 76, 137, 20, 20, 0xffe7a5, GOLD, 0xd1a04d, 10);
-        shape(s_pet, 84, 141, 4, 12, 0xfff8de, 2);
-        shape(s_pet, 80, 145, 12, 4, 0xfff8de, 2);
-    }
-    // A little heart appears during cuddles, anchored inside the pet bounds.
-    s_pet_heart = shape(s_pet, 146, 51, 24, 25, 0, 0);
-    lv_obj_set_style_bg_opa(s_pet_heart, LV_OPA_TRANSP, 0);
-    shape(s_pet_heart, 2, 2, 12, 14, 0xe99ab0, 7);
-    shape(s_pet_heart, 11, 2, 12, 14, 0xe99ab0, 7);
-    shape(s_pet_heart, 7, 8, 12, 14, 0xe99ab0, 5);
-    lv_obj_add_flag(s_pet_heart, LV_OBJ_FLAG_HIDDEN);
+    s_pet_x=x-8; s_pet_y=y-14;
+    s_pet=shape(s_root,s_pet_x,s_pet_y,172,174,0,0);
+    lv_obj_set_style_bg_opa(s_pet,LV_OPA_TRANSP,0);
+    lv_obj_add_flag(s_pet,LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_pet,pet_tap,LV_EVENT_CLICKED,NULL);
+    s_face=s_view==SLEEP?PIXEL_SLEEP:PIXEL_IDLE;
+    pixel_pet_render(&s_pet_art,pet_state_get(),s_face,0);
+    s_pet_image=lv_image_create(s_pet);
+    lv_image_set_src(s_pet_image,&s_pet_art.image);
+    lv_image_set_pivot(s_pet_image,0,0);lv_image_set_scale(s_pet_image,768);
+    lv_image_set_antialias(s_pet_image,false);lv_obj_set_pos(s_pet_image,2,4);
+    s_pet_heart=lv_image_create(s_pet);
+    lv_image_set_src(s_pet_heart,pixel_icon(6));
+    lv_image_set_pivot(s_pet_heart,0,0);lv_image_set_scale(s_pet_heart,384);
+    lv_image_set_antialias(s_pet_heart,false);lv_obj_set_pos(s_pet_heart,135,10);
+    lv_obj_add_flag(s_pet_heart,LV_OBJ_FLAG_HIDDEN);
 }
 static void progress(void)
 {
@@ -311,24 +187,29 @@ static void mute_cb(lv_event_t *e)
 static void make_home(void)
 {
     meadow();
-    label(s_root,"Little Meadow",54,22,260,true);
     for(int i=0;i<4;i++) {
-        lv_obj_t *slot=button(s_root,24+i*82,61,74,38,CREAM,nav_cb,(int[]){FOOD,CATCH,SLEEP,BATH}[i]);
-        // Small matching coloured indicators; full-size pictograms sit below.
-        s_bars[i]=lv_bar_create(slot); lv_obj_set_size(s_bars[i],50,10); lv_obj_set_pos(s_bars[i],12,14);
-        lv_obj_set_style_bg_color(s_bars[i],lv_color_hex(0xe9e8de),LV_PART_MAIN);
+        lv_obj_t *slot=button(s_root,24+i*82,12,74,38,CREAM,nav_cb,(int[]){FOOD,CATCH,SLEEP,BATH}[i]);
+        lv_obj_set_style_border_width(slot,0,0);
+        lv_obj_t *glyph=lv_image_create(slot);
+        lv_image_set_src(glyph,pixel_icon((unsigned)i));
+        lv_image_set_pivot(glyph,0,0);lv_image_set_scale(glyph,384);
+        lv_image_set_antialias(glyph,false);lv_obj_set_pos(glyph,0,2);
+        s_bars[i]=lv_bar_create(slot); lv_obj_set_size(s_bars[i],34,10); lv_obj_set_pos(s_bars[i],36,13);
+        lv_obj_set_style_bg_color(s_bars[i],lv_color_hex(0xe9dfcf),LV_PART_MAIN);
         lv_obj_set_style_bg_color(s_bars[i],lv_color_hex(colors[i]),LV_PART_INDICATOR);
-        lv_obj_set_style_radius(s_bars[i],6,LV_PART_MAIN); lv_obj_set_style_radius(s_bars[i],6,LV_PART_INDICATOR);
+        lv_obj_set_style_radius(s_bars[i],0,LV_PART_MAIN); lv_obj_set_style_radius(s_bars[i],0,LV_PART_INDICATOR);
     }
-    s_hint=label(s_root,"Tap me for a cuddle",40,126,288,false);
-    make_pet(106,161);
+    // Clear feedback lives on a cream strip, away from the detailed room art.
+    shape(s_root,24,327,320,23,CREAM,0);
+    s_hint=label(s_root,"Tap me for a cuddle",28,331,312,false);
+    make_pet(106,167);
     lv_obj_t *album=button(s_root,24,249,54,51,CREAM,nav_cb,ALBUM); icon(album,4,-2,1);
     lv_obj_t *settings=button(s_root,294,250,50,48,CREAM,nav_cb,SETTINGS);
     label(settings,LV_SYMBOL_SETTINGS,0,11,50,true);
     const char *names[]={"Food","Play","Sleep","Bath"};
     int views[]={FOOD,CATCH,SLEEP,BATH};
     for(int i=0;i<4;i++) {
-        lv_obj_t *b=button(s_root,24+i*82,352,74,72,CREAM,nav_cb,views[i]);
+        lv_obj_t *b=button(s_root,24+i*82,352,74,72,(uint32_t[]){0xff95b0,0x93deaf,0xc5a1ed,0x85d6f3}[i],nav_cb,views[i]);
         icon(b,i,8,0); label(b,names[i],0,51,74,false);
         shape(b,21,68,32,3,colors[i],2);
     }
@@ -345,7 +226,8 @@ static void show(View view)
     s_root=shape(lv_screen_active(),0,0,368,448,CREAM,0);
     if(view==HOME) { make_home(); return; }
     if(view==FOOD) {
-        header("Snack time"); make_pet(106,124);
+        room(false); header("Snack time"); make_pet(106,132);
+        shape(s_root,32,85,304,29,CREAM,0);
         s_hint=label(s_root,"Pick a yummy snack",32,92,304,false);
         for(int i=0;i<3;i++) {
             lv_obj_t *b=button(s_root,29+i*108,310,94,89,0xffe9d3,food_cb,i);
@@ -361,7 +243,7 @@ static void show(View view)
         // Quiet dotted trail gives the playfield depth without distracting targets.
         for(int i=0;i<7;i++) shape(s_root,35+i*46,378,5,5,0xdce8df,3);
     } else if(view==BATH) {
-        header("Bubble bath"); progress(); make_pet(106,159);
+        room(false); header("Bubble bath"); progress(); make_pet(106,159);
         shape(s_root,62,294,244,62,BLUE,30); shape(s_root,53,282,262,21,0xd4eff4,10);
         label(s_root,"Pop all five bubbles",32,397,304,false);
         static const int xy[5][2]={{26,139},{144,125},{264,140},{35,225},{259,229}};
@@ -370,17 +252,13 @@ static void show(View view)
             lv_obj_set_style_radius(b,35,0); shape(b,15,13,17,10,0xffffff,6);
         }
     } else if(view==SLEEP) {
-        lv_obj_set_style_bg_color(s_root,lv_color_hex(0x343e62),0);
+        room(true);
         header("Little nap");
-        // Override header title for the night palette.
-        lv_obj_set_style_text_color(lv_obj_get_child(s_root,1),lv_color_hex(CREAM),0);
-        for(int i=0;i<8;i++) shape(s_root,30+(i*47)%310,106+(i*31)%190,4,4,GOLD,2);
-        shape(s_root,271,105,39,39,0xb4bce9,20);
-        shape(s_root,285,100,30,30,0x343e62,16);
         make_pet(106,178);
         s_sleep_bar=lv_bar_create(s_root); lv_obj_set_pos(s_sleep_bar,74,365); lv_obj_set_size(s_sleep_bar,220,12);
         lv_obj_set_style_bg_color(s_sleep_bar,lv_color_hex(GOLD),LV_PART_INDICATOR);
-        lv_obj_t *l=label(s_root,"Shhh...",70,125,228,true); lv_obj_set_style_text_color(l,lv_color_hex(CREAM),0);
+        shape(s_root,94,107,180,32,CREAM,0);
+        label(s_root,"Shhh...",94,116,180,true);
     } else if(view==PARTY) {
         unsigned earned=pet_state_get()->evolution_progress;
         label(s_root,earned<=30 && earned%5==0?"New sticker!":"Lovely caring!",24,40,320,true);
@@ -433,37 +311,14 @@ static void frame(lv_timer_t *t)
         bool hopping=(int32_t)(s_hop_until-now)>0;
         int dy=hopping ? -(int)(fabsf(sinf(now/90.0f))*13) : (int)(sinf(now/(s_view == SLEEP ? 1100.0f : 650.0f))*3);
         lv_obj_set_y(s_pet,s_pet_y+dy);
-        bool asleep = s_view == SLEEP;
-        bool delighted = s_view == PARTY || (hopping && !s_eating && !asleep);
-        bool blink = now % 4200 > 4010;
-        bool closed = asleep || delighted || blink;
-        for (int i = 0; i < 2; i++) {
-            if (closed) {
-                lv_obj_add_flag(s_eyes[i], LV_OBJ_FLAG_HIDDEN);
-                lv_obj_remove_flag(s_closed_eyes[i], LV_OBJ_FLAG_HIDDEN);
-                lv_arc_set_bg_angles(s_closed_eyes[i], delighted ? 195 : 15,
-                                      delighted ? 345 : 165);
-            } else {
-                lv_obj_remove_flag(s_eyes[i], LV_OBJ_FLAG_HIDDEN);
-                lv_obj_add_flag(s_closed_eyes[i], LV_OBJ_FLAG_HIDDEN);
-                lv_obj_set_x(s_pupils[i], 2 + (int)(sinf(now / 1700.0f) * 1.5f));
-            }
-            int flutter = asleep ? 0 : (int)(sinf(now / (hopping ? 95.0f : 800.0f)) * (hopping ? 55 : 12));
-            lv_obj_set_style_transform_rotation(s_ears[i], (i ? 110 : -90) + flutter, 0);
-            lv_obj_set_y(s_paws[i], 111 + (delighted ? (int)(sinf(now / 100.0f + i) * 5) : 0));
-        }
-        bool open = !asleep && (delighted || (s_eating && now % 300 < 180));
-        if (open) {
-            lv_obj_add_flag(s_smile, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_remove_flag(s_open_mouth, LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_remove_flag(s_smile, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(s_open_mouth, LV_OBJ_FLAG_HIDDEN);
-        }
-        if (hopping && !s_eating && !asleep) {
-            lv_obj_remove_flag(s_pet_heart, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_y(s_pet_heart, 48 + (int)(sinf(now / 200.0f) * 4));
-        } else lv_obj_add_flag(s_pet_heart, LV_OBJ_FLAG_HIDDEN);
+        bool asleep=s_view==SLEEP;
+        bool delighted=s_view==PARTY || (hopping && !s_eating && !asleep);
+        s_face=asleep?PIXEL_SLEEP:s_eating?PIXEL_EAT:delighted?PIXEL_HAPPY:
+               now%4200>4010?PIXEL_BLINK:PIXEL_IDLE;
+        pixel_pet_render(&s_pet_art,pet_state_get(),s_face,now/180);
+        lv_obj_invalidate(s_pet_image);
+        if(hopping && !s_eating && !asleep) lv_obj_remove_flag(s_pet_heart,LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(s_pet_heart,LV_OBJ_FLAG_HIDDEN);
     }
     if(s_view==FOOD && s_eating && elapsed>=1200) finish(0);
     if(s_view==SLEEP) {

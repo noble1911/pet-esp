@@ -1,7 +1,8 @@
 """Convert the real LVGL test renders to PNG; requires Pillow."""
 from pathlib import Path
+import sys
 from PIL import Image, ImageDraw
-p = Path(__file__).resolve().parents[2] / 'docs/previews/little-meadow'
+p = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2] / 'docs/previews/little-meadow'
 names = ['home', 'food', 'play', 'bath', 'sleep', 'party', 'album', 'settings']
 board = Image.new('RGB', (368 * 4, 480 * 2), '#eef0ef')
 draw = ImageDraw.Draw(board)
@@ -17,7 +18,7 @@ for f in p.glob('*.ppm'):
     f.unlink()
 
 # Pet review boards: preserve the recorded baseline and regenerate current art.
-review = p.parent / 'pet-refresh'
+review = p if p.name == 'pixel-v1' else p.parent / 'pet-refresh'
 review.mkdir(exist_ok=True)
 if (p / 'pet-coat-0.png').exists():
     variants = Image.new('RGB', (6 * 196, 2 * 228), '#fff9ed')

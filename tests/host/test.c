@@ -50,6 +50,7 @@ int main(void)
         assert(pet_state_get()->stage==(n>=100?PET_STAGE_ELDER:n>=60?PET_STAGE_ADULT:n>=30?PET_STAGE_TEEN:n>=10?PET_STAGE_CHILD:PET_STAGE_BABY));
     }
     pet_state_reset();
+    saved.genes[GENE_BODY_COLOR]=0; pet_state_init();
     lv_init();lv_display_t *d=lv_display_create(368,448);
     lv_display_set_color_format(d,LV_COLOR_FORMAT_XRGB8888);
     lv_display_set_buffers(d,pixels,NULL,sizeof pixels,LV_DISPLAY_RENDER_MODE_DIRECT);lv_display_set_flush_cb(d,flush);
@@ -57,7 +58,7 @@ int main(void)
     ui_init(); shot("home");
     tap(180,245); advance(60);
     assert((int32_t)(s_hop_until-lv_tick_get()) > 0);
-    assert(lv_obj_has_flag(s_eyes[0], LV_OBJ_FLAG_HIDDEN));
+    assert(s_face == PIXEL_HAPPY);
     assert(!lv_obj_has_flag(s_pet_heart, LV_OBJ_FLAG_HIDDEN));
     shot("pet-cuddle");
     advance(700);
@@ -70,9 +71,8 @@ int main(void)
     show(BATH);shot("bath");tap(60,173);tap(178,159);tap(298,174);tap(70,260);tap(294,264);
     assert(s_view==PARTY);assert(pet_state_get()->evolution_progress==3);
     show(SLEEP);shot("sleep");
-    assert(lv_obj_has_flag(s_eyes[0], LV_OBJ_FLAG_HIDDEN));
-    assert(!lv_obj_has_flag(s_closed_eyes[0], LV_OBJ_FLAG_HIDDEN));
-    assert(lv_obj_has_flag(s_open_mouth, LV_OBJ_FLAG_HIDDEN));
+    assert(s_face == PIXEL_SLEEP);
+
     advance(2500);tap(48,46);assert(s_view==HOME);advance(4000);assert(pet_state_get()->evolution_progress==3);
     show(SLEEP);advance(6100);assert(s_view==PARTY);assert(pet_state_get()->evolution_progress==4);
     show(FOOD);tap(73,350);tap(48,46);advance(1400);

@@ -5,7 +5,7 @@ set(LV_BUILD_CONF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h" CACHE PATH "" FOR
 set(CONFIG_LV_BUILD_DEMOS OFF CACHE BOOL "" FORCE)
 set(CONFIG_LV_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 add_subdirectory(../../firmware/managed_components/lvgl__lvgl lvgl)
-add_executable(pet_test test.c ../../firmware/components/pet_state/pet_state.c)
+add_executable(pet_test test.c ../../firmware/components/ui/pixel_pet.c ../../firmware/components/pet_state/pet_state.c)
 target_include_directories(pet_test PRIVATE stubs ../../firmware/components/ui/include ../../firmware/components/pet_state/include ../../firmware/components/renderer/include ../../firmware/components/power/include ../../firmware/components/audio/include)
 target_link_libraries(pet_test PRIVATE lvgl)
 target_compile_options(pet_test PRIVATE -Wall -Wextra -Werror -UNDEBUG)
