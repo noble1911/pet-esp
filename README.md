@@ -8,7 +8,7 @@ A gentle touchscreen pet for the **Waveshare ESP32-S3-Touch-AMOLED-1.8 (original
 
 ## Pixel-art v1
 
-The current branch `codex/pixel-art-v1` implements the approved Tamagotchi-inspired direction: warm illustrated room, night room, an animated pixel sprout creature, colourful icon buttons and pixel headings. Existing gameplay and NVS saves are unchanged. Six coat colours and five growth stages remain supported.
+The pixel-art release implements the approved Tamagotchi-inspired direction: warm illustrated room, night room, an animated pixel sprout creature, colourful icon buttons and pixel headings. Existing gameplay and NVS saves are unchanged. Six coat colours and five growth stages remain supported.
 
 The previous shaded-bunny version is preserved at Git tag **`vector-art-v1`**. To return the device to that version, run:
 
@@ -27,7 +27,7 @@ This uses a separate verified binary bundle and does not erase NVS. For the old 
 - Tap your pet for a cuddle and a little hop.
 - Each completed activity earns one saved star. Collect six stickers, one every five stars, via the star button at home. Growth adds a tuft, flower, scarf and golden badge at 10, 30, 60 and 100 stars.
 - The matching coloured bars show food, happiness, energy and cleanliness. They also open their activities.
-- The cog opens battery information, the sound toggle and a 0–100% volume slider. Releasing the slider previews the level unless muted. Sound settings are session-local; volume starts at 35% after restart. There is no destructive reset button in the child-facing UI.
+- The cog opens battery information, naming, Wi-Fi checks, the sound toggle and a 0–100% volume slider. Releasing the slider previews the level unless muted. Sound settings are session-local; volume starts at 35% after restart. There is no destructive reset button in the child-facing UI.
 
 Needs decay gently while powered on (one point per 3 / 4 / 5 / 6 minutes), stop at 20, and pause while powered off. There is no death, lost progress or punishment for leaving the toy. Each care action restores 30 points, capped at 100.
 
@@ -46,8 +46,8 @@ The helper selects the Python interpreter matching the existing build cache. On 
 ```sh
 cmake -S tests/host -B /tmp/pet-host-build
 cmake --build /tmp/pet-host-build -j8
-(cd docs/previews/pixel-v1 && /tmp/pet-host-build/pet_test)
-python3 tests/host/render_previews.py docs/previews/pixel-v1
+(cd docs/previews/voice-v1 && /tmp/pet-host-build/pet_test)
+python3 tests/host/render_previews.py docs/previews/voice-v1
 ```
 
 Uses the managed LVGL source installed by the firmware build, with mocked NVS/audio/power and actual LVGL pointer input. Tests cover decay boundaries, need floors, capped restoration, save/reload, all growth thresholds, activity completion, duplicate taps, cancelled feeding/naps, mute and repeated navigation. The PNG previews are renders of the actual C UI, not separate mockups. Pillow is needed only to convert the test's PPMs to PNG.
@@ -58,7 +58,8 @@ Uses the managed LVGL source installed by the firmware build, with mocked NVS/au
 - `firmware/components/ui/pixel_pet.c`: the 56 × 56 pixel pet and icon artwork.
 - `art/pixel-v1/`: approved concept, generated room source images and device-size previews; regenerate their header using `python3 scripts/pack_pixel_rooms.py`.
 - `firmware/components/pet_state/`: backwards-compatible NVS pet blob. Previously unused `evolution_progress` stores care stars; no struct layout change.
-- `firmware/components/audio/`: quiet, asynchronous codec chirps; mute is session-local.
+- `firmware/components/audio/`: one asynchronous speaker worker for speech and chirps, plus gated microphone capture; mute is session-local.
+- `firmware/components/voice/`: Wi-Fi, pet-scoped WebSocket protocol and queued voice turns.
 - `firmware/components/renderer/`: BSP display/touch initialization and retained legacy sprite renderer.
 - `docs/little-meadow.md`: design decisions, validation and limitations.
 

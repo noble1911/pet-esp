@@ -47,3 +47,5 @@ Mac mini backups: `~/pet-voice-backup/{voice.py,session.py,butler.py,gateway.env
 - Physical button feel, microphone pickup with a child's voice and perceived speaker loudness still need the owner's hands-on check.
 
 Backend commits: HomeServer `a1ff4a2` (pushed on `codex/pet-voice-v1`), claude-esp `62c12b9`.
+
+Final device verification: firmware source `d89bc64`, flashed and reset successfully. A 20-second boot capture showed both codecs, display/touch and authenticated pet gateway ready, with no error/panic lines. Saved pet ID, stage and needs were retained. Firmware SHA-256: `698e35d4c5b806a8d10df1b0159046aa1e5d425153e0a22afec0fc02091e8db6`.
