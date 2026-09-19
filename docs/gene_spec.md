@@ -4,6 +4,14 @@ Expands [architecture.md §6](architecture.md). The architecture doc is
 authoritative; this file is the working reference for the `pet_state`
 component and the sprite forge.
 
+## Current illustrated sprite build
+
+The table below describes the original eight-byte genetics storage format. The current complete-sprite renderer uses **only body colour** for genetic appearance: byte 1 modulo 6 selects Sunny gold, Lilac, Mint, Rose, Peach or Sky blue. The sixteen stored colour values share those six looks. Growth accessories come from life stage, not from another gene.
+
+**My pet** exposes every saved gene. Body shape, eye shape, eye colour, ears, mouth and markings are labelled saved for later; they do not yet affect these sprites. Their numbered variants preserve the original indices without assigning fictional appearances. Personality now supplies explicit voice context from the same catalogue as the UI; the earlier archetypes energetic, grumpy and sleepy are displayed as Bouncy, Feisty and Dreamy. This does not alter genes, needs, rewards or gameplay difficulty. The legacy emote selector remains separate from the illustrated UI.
+
+`data/pet_traits.json` is the current display catalogue. Run `python3 scripts/generate_pet_traits.py` after editing it, or `--check` to verify the committed firmware/voice tables. See [profile and browsing](pet-traits-v1.md).
+
 ## Gene vector
 
 Exactly **8 bytes**, stored in `Pet.genes[8]`. Each byte indexes a part

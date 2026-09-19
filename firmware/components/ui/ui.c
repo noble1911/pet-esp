@@ -21,7 +21,7 @@
 #define PINK 0xf3a8b6
 #define BLUE 0xa9dbef
 
-typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET } View;
+typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT } View;
 static View s_view;
 static lv_obj_t *s_root, *s_pet, *s_bars[4], *s_target, *s_counter;
 static lv_obj_t *s_dots[5], *s_hint, *s_sleep_bar;
@@ -39,6 +39,7 @@ static pixel_food_t s_food;
 static uint32_t s_started, s_hop_until, s_last_tick;
 static unsigned s_hits, s_last_target;
 static bool s_eating, s_muted;
+static unsigned s_profile_page, s_trait_gene, s_trait_variant;
 static unsigned s_album_page, s_hiding, s_weather_mode;
 static uint32_t s_reveal_until, s_ball_ready, s_ball_time, s_next_butterfly, s_butterfly_until;
 static bool s_ball_pressed;
@@ -258,7 +259,7 @@ static void volume_cb(lv_event_t *e)
 }
 static const char *activity(void)
 {
-    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups"}[s_view];
+    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits"}[s_view];
 }
 static void talk_begin(void)
 {
@@ -324,6 +325,70 @@ static void decorate_cb(lv_event_t *e)
     }
     if(!pet_equip_decoration(d)) {lv_label_set_text(s_hint,"Couldn't save. Please try again.");return;}
     audio_play(SFX_GIFT);show(HOME);
+}
+static void profile_page_cb(lv_event_t *e)
+{
+    (void)e;s_profile_page^=1;show(PROFILE);
+}
+static void trait_open_cb(lv_event_t *e)
+{
+    s_trait_gene=(unsigned)(uintptr_t)lv_event_get_user_data(e);
+    s_trait_variant=pet_trait_choice(pet_state_get(),s_trait_gene);show(TRAIT);
+}
+static void trait_browse_cb(lv_event_t *e)
+{
+    const pet_trait_t *t=pet_trait(s_trait_gene);
+    int delta=(int)(intptr_t)lv_event_get_user_data(e);
+    s_trait_variant=(s_trait_variant+t->count+delta)%t->count;show(TRAIT);
+}
+static void trait_portrait(int x,int y,const Pet *p)
+{
+    pixel_pet_render(&s_pet_art,p,PIXEL_IDLE,12,PIXEL_APPLE);
+    art(s_root,&s_pet_art.image,x,y,512);
+}
+static void make_profile(void)
+{
+    const Pet *p=pet_state_get();char text[96];header("My pet");
+    trait_portrait(18,79,p);
+    label(s_root,p->name,172,100,174,true);
+    const char *stages[]={"Egg","Baby","Child","Teen","Grown-up","Elder"};
+    snprintf(text,sizeof text,"%s  |  %lu stars",stages[p->stage<=PET_STAGE_ELDER?p->stage:0],(unsigned long)p->evolution_progress);
+    label(s_root,text,166,148,182,false);
+    const pet_trait_t *personality=pet_trait(GENE_PERSONALITY);
+    snprintf(text,sizeof text,"%s little friend",personality->values[pet_trait_choice(p,GENE_PERSONALITY)]);
+    label(s_root,text,166,180,182,false);
+    label(s_root,"Tap a trait to explore",24,221,320,false);
+    static const unsigned genes[8]={GENE_BODY_COLOR,GENE_PERSONALITY,GENE_BODY_SHAPE,GENE_EYE_SHAPE,
+                                   GENE_EYE_COLOR,GENE_EAR_SHAPE,GENE_MOUTH_SHAPE,GENE_PATTERN};
+    for(unsigned i=0;i<4;i++) {
+        unsigned gene=genes[s_profile_page*4+i];const pet_trait_t *t=pet_trait(gene);
+        lv_obj_t *card=button(s_root,24+(i%2)*166,247+(i/2)*62,154,54,
+            strcmp(t->mode,"stored")?MINT:0xeee9df,trait_open_cb,(int)gene);
+        label(card,t->label,0,7,154,false);
+        label(card,t->values[pet_trait_choice(p,gene)],0,29,154,false);
+    }
+    label(s_root,s_profile_page?"These looks are saved for later.":"Grey traits: looks saved for later.",16,372,336,false);
+    lv_obj_t *prev=button(s_root,24,397,62,44,BLUE,profile_page_cb,0);label(prev,LV_SYMBOL_LEFT,0,10,62,true);
+    snprintf(text,sizeof text,"Traits %u / 2",s_profile_page+1);label(s_root,text,94,411,180,false);
+    lv_obj_t *next=button(s_root,282,397,62,44,BLUE,profile_page_cb,0);label(next,LV_SYMBOL_RIGHT,0,10,62,true);
+}
+static void make_trait(void)
+{
+    const Pet *p=pet_state_get();const pet_trait_t *t=pet_trait(s_trait_gene);char text[80];
+    lv_obj_t *back=button(s_root,24,22,48,48,0xffffff,nav_cb,PROFILE);label(back,LV_SYMBOL_LEFT,0,11,48,true);
+    label(s_root,t->label,80,32,264,true);
+    label(s_root,t->values[s_trait_variant],24,86,320,true);
+    bool mine=s_trait_variant==pet_trait_choice(p,s_trait_gene);
+    label(s_root,mine?"This one is mine!":"Just looking - your pet stays the same",16,116,336,false);
+    Pet preview=*p;
+    if(s_trait_gene==GENE_BODY_COLOR)preview.genes[GENE_BODY_COLOR]=(uint8_t)s_trait_variant;
+    trait_portrait(112,138,&preview);
+    label(s_root,t->descriptions[s_trait_variant],24,291,320,false);
+    label(s_root,!strcmp(t->mode,"stored")?"Saved trait - not shown in my picture":
+        s_trait_gene==GENE_PERSONALITY?"My personality helps shape my chats":"Try looking at all six coat colours",16,353,336,false);
+    lv_obj_t *prev=button(s_root,24,395,62,46,BLUE,trait_browse_cb,-1);label(prev,LV_SYMBOL_LEFT,0,12,62,true);
+    snprintf(text,sizeof text,"%u / %u",s_trait_variant+1,t->count);label(s_root,text,94,410,180,false);
+    lv_obj_t *next=button(s_root,282,395,62,46,BLUE,trait_browse_cb,1);label(next,LV_SYMBOL_RIGHT,0,12,62,true);
 }
 static void make_album(void)
 {
@@ -544,6 +609,8 @@ static void make_home(void)
     s_caption_label=label(caption,"",8,9,300,false);
     lv_obj_set_height(s_caption_label,52);lv_label_set_long_mode(s_caption_label,LV_LABEL_LONG_SCROLL);
     lv_obj_add_flag(caption,LV_OBJ_FLAG_HIDDEN);
+    lv_obj_t *profile=button(s_root,24,195,54,44,CREAM,nav_cb,PROFILE);
+    label(profile,"My\npet",0,5,54,false);
     lv_obj_t *album=button(s_root,24,249,54,51,CREAM,nav_cb,ALBUM); icon(album,4,-2,1);
     lv_obj_t *settings=button(s_root,294,250,50,48,CREAM,nav_cb,SETTINGS);
     label(settings,LV_SYMBOL_SETTINGS,0,11,50,true);
@@ -576,7 +643,9 @@ static void show(View view)
     s_view=view; s_started=lv_tick_get(); s_hits=0; s_eating=false; s_hop_until=0;s_reaction_until=0;
     s_root=shape(lv_screen_active(),0,0,368,448,CREAM,0);
     if(view==HOME) { make_home(); return; }
-    if(view==MUSIC) {make_music();
+    if(view==PROFILE) {make_profile();
+    } else if(view==TRAIT) {make_trait();
+    } else if(view==MUSIC) {make_music();
     } else if(view==GAMES) {make_games();
     } else if(view==HIDE) {make_hide();
     } else if(view==BALL) {make_ball();

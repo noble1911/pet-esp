@@ -77,6 +77,16 @@ typedef struct {
 // Per-byte modulus for the breeding mixer (docs/gene_spec.md).
 extern const uint8_t PET_GENE_MAX[8];
 
+// Read-only trait catalogue. Display choices can share the same look (the
+// 16 stored coat genes currently map to six colours). No save/schema changes.
+typedef struct {
+    const char *label, *mode;
+    unsigned count;
+    const char *values[16], *descriptions[16];
+} pet_trait_t;
+const pet_trait_t *pet_trait(unsigned gene); // NULL for an invalid gene
+unsigned pet_trait_choice(const Pet *pet, unsigned gene);
+
 // Lifecycle ------------------------------------------------------------
 
 // Load the Pet from NVS, or leave an unhatched egg if none exists.

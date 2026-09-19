@@ -346,6 +346,44 @@ int main(void)
         }
         test_playing=false;
     }
+    // Every saved gene can be explored without applying the preview or saving.
+    assert(!pet_trait(8) && !pet_trait(999));
+    for(unsigned gene=0;gene<8;gene++) {
+        const pet_trait_t *t=pet_trait(gene);assert(t && t->count>0 && t->count<=16);
+        for(unsigned value=0;value<256;value++) {
+            Pet variant=*pet_state_get();variant.genes[gene]=(uint8_t)value;
+            unsigned choice=pet_trait_choice(&variant,gene);
+            assert(choice<t->count && t->values[choice] && t->descriptions[choice]);
+            if(gene==GENE_BODY_COLOR)assert(choice==value%6);
+        }
+    }
+    Pet before_traits=*pet_state_get(), saved_before_traits=saved;
+    s_profile_page=0;show(HOME);shot("traits-home");tap(50,215);assert(s_view==PROFILE);shot("profile-1");
+    tap(310,416);assert(s_profile_page==1);shot("profile-2");
+    tap(50,416);assert(s_profile_page==0);
+    for(unsigned page=0;page<2;page++) {
+        for(unsigned card=0;card<4;card++) {
+            tap(100+(card%2)*166,272+(card/2)*62);assert(s_view==TRAIT);
+            char name[64];snprintf(name,sizeof name,"trait-%u",s_trait_gene);shot(name);
+            unsigned start=s_trait_variant;const pet_trait_t *t=pet_trait(s_trait_gene);
+            tap(50,418);assert(s_trait_variant==(start+t->count-1)%t->count);
+            tap(310,418);assert(s_trait_variant==start);
+            for(unsigned choice=0;choice<t->count;choice++) {
+                if(s_trait_gene==GENE_BODY_COLOR || s_trait_gene==GENE_PERSONALITY) {
+                    snprintf(name,sizeof name,"trait-%u-choice-%u",s_trait_gene,s_trait_variant);shot(name);
+                }
+                tap(310,418);
+            }
+            assert(s_trait_variant==start);
+            tap(48,46);assert(s_view==PROFILE && s_profile_page==page);
+        }
+        tap(310,416);
+    }
+    assert(pet_state_get()->pet_id==before_traits.pet_id);
+    assert(!memcmp(pet_state_get()->genes,before_traits.genes,8));
+    assert(pet_state_get()->evolution_progress==before_traits.evolution_progress);
+    assert(!memcmp(&saved,&saved_before_traits,sizeof saved));
+    tap(48,46);assert(s_view==HOME);
     // Start fresh is a two-step destructive action; opening/cancelling is safe.
     saved=snapshot;saved.evolution_progress=90;saved.inventory[15]=105;
     strcpy(saved.name,"Clover");pet_state_init();
@@ -373,7 +411,7 @@ int main(void)
     pet_state_tick(pet_state_get()->last_tick+179);assert(pet_state_get()->hunger==100);
     show(HOME);shot("fresh-pet");
     saved = snapshot; pet_state_init();
-    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 stickers, saved room gifts, weather and visits");
+    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 stickers, saved room gifts, weather and visits; all eight traits, preview wraparound and unchanged genes/save");
     lv_deinit();
     return 0;
 }

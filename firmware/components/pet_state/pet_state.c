@@ -3,6 +3,7 @@
 // restore each one. Evolution / breeding stay stubbed.
 
 #include "pet_state.h"
+#include "pet_traits_data.h"
 
 #include <string.h>
 #include <time.h>
@@ -14,6 +15,16 @@ static const char *TAG = "pet_state";
 
 #define NVS_NAMESPACE "pet"
 #define NVS_KEY       "blob"
+
+const pet_trait_t *pet_trait(unsigned gene)
+{
+    return gene<8 ? &TRAITS[gene] : NULL;
+}
+unsigned pet_trait_choice(const Pet *pet, unsigned gene)
+{
+    const pet_trait_t *t=pet_trait(gene);
+    return pet && t ? pet->genes[gene]%t->count : 0;
+}
 
 // Gentle active-time needs. Offline time is paused; needs never fall below 20.
 #define HUNGER_DECAY_PERIOD_SEC    180

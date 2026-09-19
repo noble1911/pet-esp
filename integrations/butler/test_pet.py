@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi import HTTPException
 from pydantic import ValidationError
-from api.routes.pet import PetState, PetTurn, PetMemory, pet_stream, PET_MODEL, reward_snapshot, PetTune, PetCompose, resolve_pet_account
+from api.routes.pet import PetState, PetTurn, PetMemory, pet_stream, PET_MODEL, reward_snapshot, PetTune, PetCompose, resolve_pet_account, trait_snapshot
 from api.llm import _ToolRouter
 from api.config import settings
 
@@ -45,6 +45,18 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reward_snapshot(state)['equipped_room_gift'],'trophy')
         for event in ('finished_hide_game','finished_ball_game','butterfly_visit'):
             PetState(**{**STATE,'recent_event':event,'recent_event_age_seconds':0})
+
+    def test_all_trait_values_match_catalogue_and_current_renderer(self):
+        from api.routes.pet_traits import TRAITS
+        self.assertEqual(len(TRAITS),8)
+        for value in range(256):
+            snapshot=trait_snapshot(PetState(**{**STATE,'genes':[value]*8}))
+            self.assertEqual(snapshot['body_color']['name'],['Sunny gold','Lilac','Mint','Rose','Peach','Sky blue'][value%6])
+            self.assertEqual(snapshot['personality']['name'],TRAITS[7]['values'][value%8])
+            self.assertEqual(sum(t['mode']=='stored' for t in snapshot.values()),6)
+            for trait in TRAITS:self.assertIn(snapshot[trait['key']]['name'],trait['values'])
+        for invalid in (-1,256,True,1.5):
+            with self.assertRaises(ValidationError):PetState(**{**STATE,'genes':[invalid]*8})
 
     async def test_memory_cannot_read_another_user(self):
         tool=MagicMock();tool.name='recall_facts';tool.description='Recall';tool.parameters={'properties':{'user_id':{'type':'string'},'query':{'type':'string'}},'required':['user_id']};tool.execute=AsyncMock(return_value='ok')
@@ -119,6 +131,9 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
             async for _ in response.body_iterator:pass
         self.assertEqual(set(captured['tools']),{'remember_fact','compose_tune'})
         self.assertIn('"fullness":80',captured['system_prompt'][1]['text'])
+        self.assertIn('CURRENT TRAITS (data)',captured['system_prompt'][1]['text'])
+        self.assertIn('"name": "Sunny gold"',captured['system_prompt'][1]['text'])
+        self.assertIn('"mode": "stored"',captured['system_prompt'][1]['text'])
         self.assertEqual(captured['user_id'],'pet')
         self.assertEqual(captured['model_override'],PET_MODEL)
         self.assertFalse(captured['allow_web_search'])

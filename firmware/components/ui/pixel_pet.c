@@ -31,7 +31,7 @@ void pixel_pet_render(pixel_pet_art_t *a,const Pet *pet,pixel_face_t face,unsign
     }
     static const uint8_t coats[6][3]={{255,224,112},{188,156,231},{137,213,171},
                                     {245,164,196},{255,202,141},{139,204,232}};
-    unsigned coat=pet->genes[GENE_BODY_COLOR]%6;
+    unsigned coat=pet_trait_choice(pet,GENE_BODY_COLOR);
     memset(a->pixels,0,sizeof a->pixels);
     for(int y=0;y<W;y++)for(int x=0;x<W;x++) {
         uint16_t rgb=pet_sprite_pixels[id][y*W+x];
