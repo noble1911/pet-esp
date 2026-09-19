@@ -36,3 +36,16 @@ The six-character compressed atlas is 753,699 bytes. Generator freshness and
 RLE round-trip checks pass. Roll back to `five-characters-v1` for the previous
 five-character firmware; if a pig had been selected, that firmware shows Sprout
 until returning to this version. NVS must never be erased for rollback.
+
+## Deployment — 2026-09-19
+
+Backend commit `1f812cc` is deployed on Ron's Mac mini. Butler is healthy and
+all 17 tests pass against its deployed code. The naming fix takes effect
+without a device flash.
+
+Firmware `pink-pig-v1` (`bd5a4a8`) builds successfully: `0x245f20` bytes,
+24% free in the application partition. Flashing was attempted but USB serial
+synchronisation still failed before any writes. Rosy pig is built and ready,
+but is not yet installed on the device. Reconnect the device before retrying;
+do not erase NVS. Existing firmware and save remain unchanged by this failed
+attempt. Logs: `/tmp/pet-pig-final-build.log`, `/tmp/pet-pig-flash.log`.
