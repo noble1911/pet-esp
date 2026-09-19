@@ -40,7 +40,7 @@ static bool test_playing;
 bool audio_voice_playing(void) {return test_playing;}
 bool audio_is_ready(void) {return true;}
 int audio_mic_level(void) {return 800;}
-static int test_volume=35;
+static int test_volume=100;
 void audio_set_volume(int v) { test_volume=v; }
 int audio_get_volume(void) { return test_volume; }
 static uint32_t pixels[368*448];

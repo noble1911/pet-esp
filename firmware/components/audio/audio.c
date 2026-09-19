@@ -19,7 +19,7 @@ static StreamBufferHandle_t s_pcm;
 static esp_codec_dev_handle_t s_spk, s_mic;
 static audio_mic_cb_t s_cb;
 static atomic_bool s_muted, s_capture, s_receiving, s_accept, s_flush, s_playing;
-static atomic_int s_volume=35;
+static atomic_int s_volume=100;
 static void play_task(void *arg)
 {
     (void)arg; int16_t buf[320]; int phase=2048, hz=880, volume=-1;
