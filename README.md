@@ -4,7 +4,11 @@ Voice v1: Sprout can now chat using the existing Mac mini voice stack. Hold the 
 
 A gentle touchscreen pet for the **Waveshare ESP32-S3-Touch-AMOLED-1.8 (original SH8601 / FT3168 board)**, built with ESP-IDF 5.3.5 and LVGL 9.
 
-![Screens](docs/previews/pixel-v1/overview.png)
+![Screens](docs/previews/playtime-v1/overview.png)
+
+## Current version
+
+Playtime adds Peekaboo, Bouncy ball, eighteen stickers, six saved room gifts, butterfly visits and changing pretend window weather. Existing progress counts toward every reward. See [controls, testing and rollback](docs/playtime-v1.md).
 
 ## Pixel-art v1
 
@@ -21,13 +25,13 @@ This uses a separate verified binary bundle and does not erase NVS. For the old 
 ## Playing
 
 - **Food:** pick an illustrated snack; your pet eats it.
-- **Play:** tap five golden stars. Each waits for you; there is no timer or losing.
+- **Play:** choose Stars (five catches), Peekaboo (find Sprout three times), or Bouncy ball (five taps). No timers or losing; the ball pauses under your finger.
 - **Sleep:** a six-second nap restores energy. Back cancels the nap.
 - **Bath:** pop five big bubbles.
 - Tap your pet for a cuddle and a little hop.
-- Each completed activity earns one saved star. Collect six stickers, one every five stars, via the star button at home. Growth adds a tuft, flower, scarf and golden badge at 10, 30, 60 and 100 stars.
+- Each completed activity earns one saved star. Collect eighteen stickers, one every five stars, via the star button at home. Six room gifts unlock at 10, 20, 30, 45, 60 and 90 stars; choose one in My room gifts. Stars are never spent. Growth adds a tuft, flower, scarf and golden badge at 10, 30, 60 and 100 stars.
 - The matching coloured bars show food, happiness, energy and cleanliness. They also open their activities.
-- The cog opens battery information, naming, Wi-Fi checks, the sound toggle and a 0–100% volume slider. Releasing the slider previews the level unless muted. Sound settings are session-local; volume starts at 35% after restart. There is no destructive reset button in the child-facing UI.
+- The cog opens battery information, naming, Wi-Fi checks, the sound toggle and a 0–100% volume slider. Releasing the slider previews the level unless muted. Sound settings are session-local; volume starts at 100% after restart. There is no destructive reset button in the child-facing UI.
 
 Needs decay gently while powered on (one point per 3 / 4 / 5 / 6 minutes), stop at 20, and pause while powered off. There is no death, lost progress or punishment for leaving the toy. Each care action restores 30 points, capped at 100.
 
@@ -39,15 +43,16 @@ Needs decay gently while powered on (one point per 3 / 4 / 5 / 6 minutes), stop 
 ./scripts/device.sh -p /dev/cu.usbmodem101 monitor
 ```
 
-The helper selects the Python interpreter matching the existing build cache. On another machine, install ESP-IDF 5.3.x, source `export.sh`, then use `idf.py` from `firmware/`. The BSP and LVGL resolve through the component manager. The pixel creature is drawn in C; the two room images are compiled RGB565 assets. Their generated header is checked in, so building does not require image-generation tools. Legacy sprite tooling and the assets partition remain available for future work.
+The helper selects the Python interpreter matching the existing build cache. On another machine, install ESP-IDF 5.3.x, source `export.sh`, then use `idf.py` from `firmware/`. The BSP and LVGL resolve through the component manager. The complete illustrated pet frames, icons, decorations and room images are compiled assets. Their generated header is checked in, so building does not require image-generation tools. Legacy sprite tooling and the assets partition remain available for future work.
 
 ## Test and render without the device
 
 ```sh
 cmake -S tests/host -B /tmp/pet-host-build
 cmake --build /tmp/pet-host-build -j8
-(cd docs/previews/voice-v1 && /tmp/pet-host-build/pet_test)
-python3 tests/host/render_previews.py docs/previews/voice-v1
+mkdir -p docs/previews/playtime-v1/frames
+(cd docs/previews/playtime-v1 && PET_CAPTURE_ANIMATIONS=1 /tmp/pet-host-build/pet_test)
+python3 scripts/render_playtime_review.py
 ```
 
 Uses the managed LVGL source installed by the firmware build, with mocked NVS/audio/power and actual LVGL pointer input. Tests cover decay boundaries, need floors, capped restoration, save/reload, all growth thresholds, activity completion, duplicate taps, cancelled feeding/naps, mute and repeated navigation. The PNG previews are renders of the actual C UI, not separate mockups. Pillow is needed only to convert the test's PPMs to PNG.
@@ -55,8 +60,8 @@ Uses the managed LVGL source installed by the firmware build, with mocked NVS/au
 ## Implementation
 
 - `firmware/components/ui/ui.c`: screens, animation and activities; one LVGL timer owns the pet's periodic updates.
-- `firmware/components/ui/pixel_pet.c`: the 56 × 56 pixel pet and icon artwork.
-- `art/pixel-v1/`: approved concept, generated room source images and device-size previews; regenerate their header using `python3 scripts/pack_pixel_rooms.py`.
+- `firmware/components/ui/pixel_pet.c`: the 72 × 72 complete illustrated pet frames, coat tinting and flash-backed icons.
+- `art/pixel-v1/`: approved concept. `art/sprite-v3/`: current complete pet and room artwork. `art/playtime-v1/`: new sticker and decoration source atlases, compiled previews and prompts. Packing scripts live in `scripts/`.
 - `firmware/components/pet_state/`: backwards-compatible NVS pet blob. Previously unused `evolution_progress` stores care stars; no struct layout change.
 - `firmware/components/audio/`: one asynchronous speaker worker for speech and chirps, plus gated microphone capture; mute is session-local.
 - `firmware/components/voice/`: Wi-Fi, pet-scoped WebSocket protocol and queued voice turns.

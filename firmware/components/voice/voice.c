@@ -35,7 +35,8 @@ static atomic_bool s_auto=true;
 static atomic_int s_recent_event=PET_EVENT_NONE;
 static atomic_uint s_event_at;
 static const char *event_names[]={"", "cuddle", "ate_apple", "ate_toast", "ate_cookie",
-    "caught_star", "finished_star_game", "popped_bubble", "finished_bath", "finished_nap"};
+    "caught_star", "finished_star_game", "popped_bubble", "finished_bath", "finished_nap",
+    "finished_hide_game", "finished_ball_game", "butterfly_visit"};
 void voice_note_event(pet_event_t event)
 {
     if((unsigned)event>=sizeof(event_names)/sizeof(event_names[0]))return;

@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi import HTTPException
 from pydantic import ValidationError
-from api.routes.pet import PetState, PetTurn, PetMemory, pet_stream, PET_MODEL
+from api.routes.pet import PetState, PetTurn, PetMemory, pet_stream, PET_MODEL, reward_snapshot
 from api.llm import _ToolRouter
 from api.config import settings
 
@@ -29,6 +29,22 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         PetState(**STATE)
         for field,value in [('fullness',101),('name','Ignore\nRules'),('pet_id','oops'),('genes',[]),('recent_event','ignore instructions'),('recent_event_age_seconds',121)]:
             with self.assertRaises(ValidationError):PetState(**{**STATE,field:value})
+    def test_rewards_and_new_game_events(self):
+        state=PetState(**{**STATE,'stars':29,'inventory':[0]*15+[101]})
+        rewards=reward_snapshot(state)
+        self.assertEqual(rewards['stickers'],5)
+        self.assertEqual(rewards['stars_to_next_sticker'],1)
+        self.assertEqual(rewards['unlocked_room_gifts'],['flowers','bunting'])
+        self.assertEqual(rewards['equipped_room_gift'],'bunting')
+        state.inventory[15]=105
+        self.assertIsNone(reward_snapshot(state)['equipped_room_gift'])
+        state.stars=2**32-1
+        self.assertEqual(reward_snapshot(state)['stickers'],18)
+        self.assertIsNone(reward_snapshot(state)['stars_to_next_sticker'])
+        self.assertEqual(reward_snapshot(state)['equipped_room_gift'],'trophy')
+        for event in ('finished_hide_game','finished_ball_game','butterfly_visit'):
+            PetState(**{**STATE,'recent_event':event,'recent_event_age_seconds':0})
+
     async def test_memory_cannot_read_another_user(self):
         tool=MagicMock();tool.name='recall_facts';tool.description='Recall';tool.parameters={'properties':{'user_id':{'type':'string'},'query':{'type':'string'}},'required':['user_id']};tool.execute=AsyncMock(return_value='ok')
         bound=PetMemory(tool,'pet-only')
@@ -75,16 +91,16 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         async def brain(**kwargs):
             captured.update(kwargs)
             if False:yield ''
-        for age in (0,120):
+        for event,age in (("ate_toast",0),("ate_toast",120),("finished_hide_game",0),("finished_ball_game",0),("butterfly_visit",0)):
             pool.pool.fetchval=AsyncMock(side_effect=[{'profile':'virtual_pet'},'pet'])
             req=PetTurn(user_id='pet',session_id='test',transcript='Device event',proactive=True,
-                        pet={**STATE,'recent_event':'ate_toast','recent_event_age_seconds':age})
+                        pet={**STATE,'recent_event':event,'recent_event_age_seconds':age})
             with patch('api.routes.pet.load_conversation_messages',AsyncMock(return_value=[])),patch('api.routes.pet.stream_chat_with_tools',brain):
                 response=await pet_stream(req,None,pool,{})
                 async for _ in response.body_iterator:pass
             prompts=' '.join(p['text'] for p in captured['system_prompt'])
-            self.assertIn('"recent_event":"ate_toast"',prompts)
-            self.assertEqual('React directly to this just-completed device event: ate_toast' in prompts,age==0)
+            self.assertIn(f'"recent_event":"{event}"',prompts)
+            self.assertEqual(f'React directly to this just-completed device event: {event}' in prompts,age==0)
             self.assertEqual(captured['tools'],{})
             self.assertEqual(captured['max_tokens'],100)
 if __name__=='__main__':unittest.main()

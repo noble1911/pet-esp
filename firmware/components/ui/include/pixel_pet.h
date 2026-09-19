@@ -10,3 +10,5 @@ typedef struct {
 } pixel_pet_art_t;
 void pixel_pet_render(pixel_pet_art_t *art, const Pet *pet, pixel_face_t face, unsigned phase, pixel_food_t food);
 const lv_image_dsc_t *pixel_icon(unsigned kind);
+const lv_image_dsc_t *pixel_collectible(unsigned kind); // full album, 0..17
+const lv_image_dsc_t *pixel_decoration(unsigned kind); // room gifts, 0..5

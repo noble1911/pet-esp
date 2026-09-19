@@ -306,3 +306,35 @@ bool pet_state_set_name(const char *name)
     s_pet=updated;
     return true;
 }
+
+// Rewards are derived from lifetime care stars, so every old save receives full
+// credit. No new fields/currency and no NVS schema change are required.
+unsigned pet_sticker_count(const Pet *pet)
+{
+    unsigned n=pet ? pet->evolution_progress/5 : 0;
+    return n>PET_STICKER_COUNT ? PET_STICKER_COUNT : n;
+}
+unsigned pet_decoration_threshold(unsigned decoration)
+{
+    static const unsigned thresholds[PET_DECORATION_COUNT]={10,20,30,45,60,90};
+    return decoration<PET_DECORATION_COUNT ? thresholds[decoration] : UINT32_MAX;
+}
+bool pet_decoration_unlocked(const Pet *pet, unsigned decoration)
+{
+    return pet && decoration<PET_DECORATION_COUNT && pet->evolution_progress>=pet_decoration_threshold(decoration);
+}
+int pet_equipped_decoration(const Pet *pet)
+{
+    if(!pet)return -1;
+    int d=(int)pet->inventory[15]-100;
+    return d>=0 && pet_decoration_unlocked(pet,(unsigned)d) ? d : -1;
+}
+bool pet_equip_decoration(int decoration)
+{
+    if(!s_have_pet || decoration < -1 || (decoration>=0 && !pet_decoration_unlocked(&s_pet,(unsigned)decoration)))return false;
+    Pet next=s_pet;
+    next.inventory[15]=decoration<0 ? 0 : (uint8_t)(100+decoration);
+    if(!pet_state_save(&next))return false;
+    s_pet=next;
+    return true;
+}

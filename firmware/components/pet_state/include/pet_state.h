@@ -63,7 +63,7 @@ typedef struct {
     uint8_t  energy;
     uint8_t  hygiene;
 
-    // Inventory — item IDs, 0 = empty slot
+    // Inventory — item IDs, 0 = empty slot. Slot 15 stores equipped room decor (100..105).
     uint8_t  inventory[16];
 
     // Social
@@ -135,8 +135,16 @@ void pet_state_check_evolution(void);
 void pet_breed(const Pet *a, const Pet *b,
                uint32_t session_timestamp, Pet *child_out);
 
+bool pet_state_set_name(const char *name);
+
+#define PET_STICKER_COUNT 18
+#define PET_DECORATION_COUNT 6
+unsigned pet_sticker_count(const Pet *pet);
+unsigned pet_decoration_threshold(unsigned decoration); // 0-based; invalid => UINT32_MAX
+bool pet_decoration_unlocked(const Pet *pet, unsigned decoration);
+int pet_equipped_decoration(const Pet *pet); // -1 = plain room
+bool pet_equip_decoration(int decoration); // -1 clears; save before changing RAM
+
 #ifdef __cplusplus
 }
 #endif
-
-bool pet_state_set_name(const char *name);

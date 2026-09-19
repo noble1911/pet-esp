@@ -76,3 +76,30 @@ const lv_image_dsc_t *pixel_icon(unsigned kind)
     const unsigned map[]={0,1,2,3,4,5,5,6,7,8};
     return &images[map[kind%10]];
 }
+
+#include "playtime_art.h"
+const lv_image_dsc_t *pixel_collectible(unsigned kind)
+{
+    if(kind<6)return pixel_icon(kind);
+    static lv_image_dsc_t images[12];
+    static bool ready;
+    if(!ready) {
+        for(unsigned i=0;i<12;i++)images[i]=(lv_image_dsc_t){
+            .header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_ARGB8888,.w=24,.h=24,.stride=96},
+            .data_size=sizeof collectible_pixels[i],.data=(const uint8_t*)collectible_pixels[i]};
+        ready=true;
+    }
+    return &images[(kind-6)%12];
+}
+const lv_image_dsc_t *pixel_decoration(unsigned kind)
+{
+    static lv_image_dsc_t images[6];
+    static bool ready;
+    if(!ready) {
+        for(unsigned i=0;i<6;i++)images[i]=(lv_image_dsc_t){
+            .header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_ARGB8888,.w=40,.h=40,.stride=160},
+            .data_size=sizeof decoration_pixels[i],.data=(const uint8_t*)decoration_pixels[i]};
+        ready=true;
+    }
+    return &images[kind%6];
+}
