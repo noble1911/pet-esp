@@ -24,7 +24,7 @@ static unsigned write_sound(sound_synth_t *s,const char *name)
 }
 int main(void)
 {
-    const char *names[]={"hatch","apple-legacy","happy","meet","emote","apple","toast","cookie","cuddle","star","bubble","bounce","hide","found","sleep","bath","sticker","gift","select","butterfly"};
+    const char *names[]={"hatch","apple-legacy","happy","meet","emote","apple","toast","cookie","cuddle","star","bubble","bounce","hide","found","sleep","bath","sticker","gift","select","butterfly","cupcake","pancakes","jelly","cake"};
     sound_synth_t s;unsigned hashes[SFX_COUNT];assert(sizeof names/sizeof names[0]==SFX_COUNT);
     for(unsigned i=0;i<SFX_COUNT;i++){sound_start_effect(&s,(sfx_id_t)i);hashes[i]=write_sound(&s,names[i]);}
     // Every current interaction has a unique waveform, not a pitch-only alias.

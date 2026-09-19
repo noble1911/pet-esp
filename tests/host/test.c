@@ -346,6 +346,67 @@ int main(void)
         }
         test_playing=false;
     }
+    // Milestone recipes derive from old saves, are never consumed, and are
+    // enforced by the model as well as the UI. A meal commits exactly once.
+    Pet food_base=saved;
+    assert(!pet_special_food(PET_SPECIAL_FOOD_COUNT));
+    assert(!pet_food_unlocked(NULL,0));assert(!pet_state_eat(PET_FOOD_COUNT));
+    static const unsigned food_milestones[]={10,25,50,100};
+    static const pet_event_t food_events[]={PET_EVENT_CUPCAKE,PET_EVENT_PANCAKES,PET_EVENT_JELLY,PET_EVENT_CAKE};
+    uint32_t special_frames[4][PIXEL_PET_SIZE*PIXEL_PET_SIZE];
+    for(unsigned i=0;i<PET_SPECIAL_FOOD_COUNT;i++) {
+        const pet_special_food_t *f=pet_special_food(i);assert(f->stars==food_milestones[i]);
+        saved=food_base;saved.evolution_progress=f->stars-1;saved.hunger=40;saved.happiness=40;
+        pet_state_init();Pet before=*pet_state_get(),disk=saved;
+        assert(pet_food_milestone(f->stars)==(int)i);
+        assert(!pet_food_unlocked(pet_state_get(),i+3));assert(!pet_state_eat(i+3));
+        assert(!memcmp(&before,pet_state_get(),sizeof before));assert(!memcmp(&disk,&saved,sizeof disk));
+        show(FOOD);tap(180,424);assert(s_view==TREATS);tap(180,150+i*80);
+        assert(s_view==TREATS && !s_eating);assert(strstr(lv_label_get_text(s_hint),"more star"));
+        if(i==0)shot("treats-locked");
+        tap(48,46);assert(s_view==FOOD);tap(73,350);advance(1300);
+        assert(s_view==PARTY && pet_state_get()->evolution_progress==f->stars);
+        char name[64];snprintf(name,sizeof name,"treat-unlock-%u",i);shot(name);
+        tap(100,400);assert(s_view==TREATS);assert(pet_food_unlocked(pet_state_get(),i+3));
+        snprintf(name,sizeof name,"treats-progress-%u",i);shot(name);
+        // Leaving before the bite completes must not feed or produce an event.
+        unsigned before_stars=pet_state_get()->evolution_progress;pet_event_t before_event=test_event;
+        tap(180,150+i*80);assert(s_view==FOOD && s_eating && s_food==(pixel_food_t)(i+3));
+        tap(48,46);advance(1300);assert(s_view==HOME && pet_state_get()->evolution_progress==before_stars && test_event==before_event);
+        show(TREATS);tap(180,150+i*80);assert(s_eating);
+        assert(test_sfx==(sfx_id_t)(SFX_CUPCAKE+i));advance(80);
+        memcpy(special_frames[i],s_pet_art.pixels,sizeof special_frames[i]);
+        snprintf(name,sizeof name,"treat-%u-hold",i);shot(name);
+        tap(180,350);assert(s_food==(pixel_food_t)(i+3)); // rapid taps cannot switch snacks
+        advance(260);snprintf(name,sizeof name,"treat-%u-bite",i);shot(name);
+        assert(memcmp(special_frames[i],s_pet_art.pixels,sizeof special_frames[i]));
+        advance(1300);assert(s_view==PARTY && test_event==food_events[i]);
+        assert(pet_state_get()->evolution_progress==before_stars+1);
+        assert(pet_state_get()->hunger==100 && pet_state_get()->happiness==50);
+        advance(1400);assert(pet_state_get()->evolution_progress==before_stars+1);
+        uint64_t identity=pet_state_get()->pet_id;pet_state_init();
+        assert(pet_food_unlocked(pet_state_get(),i+3) && pet_state_get()->pet_id==identity);
+        for(unsigned j=0;j<i;j++)assert(memcmp(special_frames[i],special_frames[j],sizeof special_frames[i]));
+    }
+    // Failed persistence cannot award stats/stars or claim a completed meal.
+    saved=food_base;saved.evolution_progress=100;saved.hunger=40;saved.happiness=95;pet_state_init();
+    Pet before_meal=*pet_state_get(),before_meal_disk=saved;pet_event_t before_event=test_event;
+    show(TREATS);tap(180,390);fail_save=true;advance(1400);
+    assert(s_view==FOOD && !s_eating && strstr(lv_label_get_text(s_hint),"Could not save"));
+    assert(!memcmp(pet_state_get(),&before_meal,sizeof before_meal));assert(!memcmp(&saved,&before_meal_disk,sizeof saved));
+    assert(test_event==before_event);fail_save=false;
+    assert(pet_state_eat(6));assert(pet_state_get()->hunger==80 && pet_state_get()->happiness==100);
+    saved.evolution_progress=UINT32_MAX;pet_state_init();assert(pet_state_eat(6));
+    assert(pet_state_get()->evolution_progress==UINT32_MAX && pet_state_get()->hunger==100);
+    // Coats still change fur, never the treat held in front of the pet.
+    for(unsigned i=0;i<4;i++) {
+        pixel_pet_art_t a,b;Pet p=*pet_state_get();p.stage=PET_STAGE_CHILD;p.genes[GENE_BODY_COLOR]=0;
+        pixel_pet_render(&a,&p,PIXEL_EAT,0,(pixel_food_t)(i+3));p.genes[GENE_BODY_COLOR]=5;
+        pixel_pet_render(&b,&p,PIXEL_EAT,0,(pixel_food_t)(i+3));
+        assert(memcmp(a.pixels,b.pixels,sizeof a.pixels));
+        for(int y=40;y<72;y++)for(int x=23;x<50;x++)assert(a.pixels[y*72+x]==b.pixels[y*72+x]);
+    }
+    saved=food_base;pet_state_init();show(HOME);
     // Every saved gene can be explored without applying the preview or saving.
     assert(!pet_trait(8) && !pet_trait(999));
     for(unsigned gene=0;gene<8;gene++) {
@@ -404,6 +465,7 @@ int main(void)
     assert(!strcmp(fresh->name,"Sprout") && fresh->evolution_progress==0);
     assert(fresh->hunger==100 && fresh->happiness==100 && fresh->energy==100 && fresh->hygiene==100);
     assert(pet_sticker_count(fresh)==0 && pet_equipped_decoration(fresh)==-1);
+    for(unsigned i=3;i<PET_FOOD_COUNT;i++)assert(!pet_food_unlocked(fresh,i));
     assert(fresh->friends_met==0 && fresh->parent_a==0 && fresh->parent_b==0);
     for(unsigned i=0;i<16;i++)assert(fresh->inventory[i]==0);
     assert(!memcmp(fresh,&saved,sizeof saved));
@@ -411,7 +473,7 @@ int main(void)
     pet_state_tick(pet_state_get()->last_tick+179);assert(pet_state_get()->hunger==100);
     show(HOME);shot("fresh-pet");
     saved = snapshot; pet_state_init();
-    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 stickers, saved room gifts, weather and visits; all eight traits, preview wraparound and unchanged genes/save");
+    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 stickers, saved room gifts, weather and visits; all eight traits, preview wraparound and unchanged genes/save; milestone foods, distinct poses, cancel, failed saves and capped bonuses");
     lv_deinit();
     return 0;
 }

@@ -58,6 +58,16 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         for invalid in (-1,256,True,1.5):
             with self.assertRaises(ValidationError):PetState(**{**STATE,'genes':[invalid]*8})
 
+    def test_special_food_milestones_and_events(self):
+        for stars in (0,9,10,24,25,49,50,99,100,2**32-1):
+            foods=reward_snapshot(PetState(**{**STATE,'stars':stars}))['special_foods']
+            self.assertEqual([f['name'] for f in foods],['Star cupcake','Berry pancakes','Rainbow jelly','Party cake'])
+            for food,threshold in zip(foods,(10,25,50,100)):
+                self.assertEqual(food['unlocked'],stars>=threshold)
+                self.assertEqual(food['stars_remaining'],max(0,threshold-stars))
+        for event in ('ate_star_cupcake','ate_berry_pancakes','ate_rainbow_jelly','ate_party_cake'):
+            PetState(**{**STATE,'recent_event':event,'recent_event_age_seconds':0})
+
     async def test_memory_cannot_read_another_user(self):
         tool=MagicMock();tool.name='recall_facts';tool.description='Recall';tool.parameters={'properties':{'user_id':{'type':'string'},'query':{'type':'string'}},'required':['user_id']};tool.execute=AsyncMock(return_value='ok')
         bound=PetMemory(tool,'pet-only')
@@ -152,7 +162,7 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         async def brain(**kwargs):
             captured.update(kwargs)
             if False:yield ''
-        for event,age in (("ate_toast",0),("ate_toast",120),("finished_hide_game",0),("finished_ball_game",0),("butterfly_visit",0)):
+        for event,age in (("ate_toast",0),("ate_toast",120),("finished_hide_game",0),("finished_ball_game",0),("butterfly_visit",0),("ate_star_cupcake",0),("ate_berry_pancakes",0),("ate_rainbow_jelly",0),("ate_party_cake",0)):
             pool.pool.fetchval=AsyncMock(side_effect=[{'profile':'virtual_pet'},'pet'])
             req=PetTurn(user_id='pet',session_id='test',transcript='Device event',proactive=True,
                         pet={**STATE,'recent_event':event,'recent_event_age_seconds':age})

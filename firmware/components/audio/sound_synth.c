@@ -28,6 +28,10 @@ void sound_start_effect(sound_synth_t *s,sfx_id_t fx)
     case SFX_BATH: SEQUENCE(SOUND_POP,{72,85},{79,85},{84,150});break;
     case SFX_STICKER: SEQUENCE(SOUND_BELL,{72,90},{76,90},{79,90},{84,310});break;
     case SFX_GIFT: SEQUENCE(SOUND_BELL,{60,100},{67,100},{72,100},{76,100},{79,340});break;
+    case SFX_CUPCAKE: SEQUENCE(SOUND_BELL,{79,75},{84,100},{88,180});break;
+    case SFX_PANCAKES: SEQUENCE(SOUND_PLUCK,{60,110},{64,90},{67,180});break;
+    case SFX_JELLY: SEQUENCE(SOUND_BOUNCE,{72,120},{67,120},{76,180});break;
+    case SFX_CAKE: SEQUENCE(SOUND_BELL,{72,90},{76,90},{79,140},{84,240});break;
     case SFX_SELECT: SEQUENCE(SOUND_PLUCK,{76,65});break;
     default: memset(s,0,sizeof *s);break;
     }

@@ -280,6 +280,44 @@ static void care_restore(uint8_t *value, uint8_t boost)
     pet_state_save(&s_pet);
 }
 
+static uint8_t stage_for_stars(uint32_t n)
+{
+    return n>=100 ? PET_STAGE_ELDER : n>=60 ? PET_STAGE_ADULT :
+           n>=30 ? PET_STAGE_TEEN : n>=10 ? PET_STAGE_CHILD : PET_STAGE_BABY;
+}
+static const pet_special_food_t SPECIAL_FOODS[PET_SPECIAL_FOOD_COUNT] = {
+    {"Star cupcake", "A tiny star on my cupcake!", 10},
+    {"Berry pancakes", "Fluffy pancakes and juicy berries!", 25},
+    {"Rainbow jelly", "Wibble wobble! Rainbow jelly!", 50},
+    {"Party cake", "A slice of cake to celebrate!", 100},
+};
+const pet_special_food_t *pet_special_food(unsigned index)
+{
+    return index<PET_SPECIAL_FOOD_COUNT ? &SPECIAL_FOODS[index] : NULL;
+}
+bool pet_food_unlocked(const Pet *pet, unsigned food)
+{
+    return pet && food<PET_FOOD_COUNT && (food<3 || pet->evolution_progress>=SPECIAL_FOODS[food-3].stars);
+}
+int pet_food_milestone(uint32_t stars)
+{
+    for(unsigned i=0;i<PET_SPECIAL_FOOD_COUNT;i++)if(stars==SPECIAL_FOODS[i].stars)return (int)i;
+    return -1;
+}
+bool pet_state_eat(unsigned food)
+{
+    if(!s_have_pet || !pet_food_unlocked(&s_pet,food))return false;
+    Pet next=s_pet;
+    unsigned fullness=next.hunger+(food<3?30:40);
+    next.hunger=fullness>100?100:fullness;
+    if(food>=3) {unsigned joy=next.happiness+10;next.happiness=joy>100?100:joy;}
+    if(next.evolution_progress<UINT32_MAX)next.evolution_progress++;
+    next.stage=stage_for_stars(next.evolution_progress);
+    if(!pet_state_save(&next))return false;
+    s_pet=next;
+    return true;
+}
+
 void pet_state_feed(void)  { care_restore(&s_pet.hunger,    CARE_RESTORE_AMOUNT); }
 void pet_state_play(void)  { care_restore(&s_pet.happiness, CARE_RESTORE_AMOUNT); }
 void pet_state_rest(void)  { care_restore(&s_pet.energy,    CARE_RESTORE_AMOUNT); }
@@ -288,9 +326,7 @@ void pet_state_clean(void) { care_restore(&s_pet.hygiene,   CARE_RESTORE_AMOUNT)
 void pet_state_check_evolution(void)
 {
     if (!s_have_pet) return;
-    uint32_t n = s_pet.evolution_progress;
-    s_pet.stage = n >= 100 ? PET_STAGE_ELDER : n >= 60 ? PET_STAGE_ADULT :
-                  n >= 30 ? PET_STAGE_TEEN : n >= 10 ? PET_STAGE_CHILD : PET_STAGE_BABY;
+    s_pet.stage=stage_for_stars(s_pet.evolution_progress);
 }
 
 void pet_breed(const Pet *a, const Pet *b,

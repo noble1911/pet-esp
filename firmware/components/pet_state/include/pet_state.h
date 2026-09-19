@@ -112,6 +112,16 @@ void pet_state_tick(uint32_t now_unix);
 // Care actions (build-order step 6) — each restores its respective need
 // by a fixed amount (clamped to 100) and saves to NVS atomically. The UI
 // is responsible for refreshing the on-screen state after a care action.
+// Ordinary snacks (0..2) are always available. Special recipes unlock forever
+// from care-star milestones, including existing saves. No stock is consumed.
+#define PET_SPECIAL_FOOD_COUNT 4
+#define PET_FOOD_COUNT (3 + PET_SPECIAL_FOOD_COUNT)
+typedef struct { const char *name, *reaction; unsigned stars; } pet_special_food_t;
+const pet_special_food_t *pet_special_food(unsigned index);
+bool pet_food_unlocked(const Pet *pet, unsigned food);
+int pet_food_milestone(uint32_t stars); // special index, or -1
+bool pet_state_eat(unsigned food); // transactional save; false for locked/invalid
+
 void pet_state_feed(void);    // hunger
 void pet_state_play(void);    // happiness
 void pet_state_rest(void);    // energy

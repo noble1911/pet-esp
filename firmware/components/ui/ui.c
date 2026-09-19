@@ -21,7 +21,7 @@
 #define PINK 0xf3a8b6
 #define BLUE 0xa9dbef
 
-typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT } View;
+typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT, TREATS } View;
 static View s_view;
 static lv_obj_t *s_root, *s_pet, *s_bars[4], *s_target, *s_counter;
 static lv_obj_t *s_dots[5], *s_hint, *s_sleep_bar;
@@ -193,16 +193,22 @@ static void update_progress(void)
 static void finish(int action)
 {
     View completed=s_view;
-    if(action==0) pet_state_feed();
+    if(action==0 && !pet_state_eat((unsigned)s_food)) {
+        s_eating=false;s_hop_until=0;
+        lv_label_set_text(s_hint,"Could not save. Please try again.");return;
+    }
     if(action==1) pet_state_play();
     if(action==2) pet_state_rest();
     if(action==3) pet_state_clean();
     unsigned earned=pet_state_get()->evolution_progress;bool gift=false;
     for(unsigned i=0;i<PET_DECORATION_COUNT;i++)if(earned==pet_decoration_threshold(i))gift=true;
-    audio_play(gift?SFX_GIFT:earned<=90 && earned%5==0?SFX_STICKER:action==3?SFX_BATH:SFX_HAPPY);
+    audio_play(gift || pet_food_milestone(earned)>=0?SFX_GIFT:earned<=90 && earned%5==0?SFX_STICKER:action==3?SFX_BATH:SFX_HAPPY);
     show(PARTY);
-    if(action==0)reaction((pet_event_t)(PET_EVENT_APPLE+s_food),
-        (const char*[]){"Crunch! Juicy apple!","Mmm, warm buttery toast!","Cookie crumbs on my cheeks!"}[s_food],true);
+    if(action==0) {
+        static const pet_event_t events[]={PET_EVENT_APPLE,PET_EVENT_TOAST,PET_EVENT_COOKIE,
+            PET_EVENT_CUPCAKE,PET_EVENT_PANCAKES,PET_EVENT_JELLY,PET_EVENT_CAKE};
+        reaction(events[s_food],s_food<3?(const char*[]){"Crunch! Juicy apple!","Mmm, warm buttery toast!","Cookie crumbs on my cheeks!"}[s_food]:pet_special_food(s_food-3)->reaction,true);
+    }
     if(action==1) {
         if(completed==HIDE)reaction(PET_EVENT_HIDE,"Peekaboo champion! You found me!",true);
         else if(completed==BALL)reaction(PET_EVENT_BALL,"Boing! Five happy bounces!",true);
@@ -211,14 +217,33 @@ static void finish(int action)
     if(action==2)reaction(PET_EVENT_NAP,"Stretch! What a lovely nap!",true);
     if(action==3)reaction(PET_EVENT_BATH,"Sparkly clean, from toes to leaves!",true);
 }
+static void start_food(unsigned food,lv_obj_t *button_obj)
+{
+    if(s_eating || !pet_food_unlocked(pet_state_get(),food)) return;
+    s_food=(pixel_food_t)food;
+    s_eating=true;s_started=lv_tick_get();s_hop_until=s_started+1200;
+    lv_label_set_text(s_hint,food<3?"Yum yum!":pet_special_food(food-3)->name);
+    if(button_obj)lv_obj_set_style_bg_color(button_obj,lv_color_hex(GOLD),0);
+    static const sfx_id_t sounds[]={SFX_APPLE,SFX_TOAST,SFX_COOKIE,SFX_CUPCAKE,SFX_PANCAKES,SFX_JELLY,SFX_CAKE};
+    audio_play(sounds[food]);
+}
 static void food_cb(lv_event_t *e)
 {
-    if(s_eating) return;
-    s_food=(pixel_food_t)(intptr_t)lv_event_get_user_data(e);
-    s_eating=true; s_started=lv_tick_get(); s_hop_until=s_started+1200;
-    lv_label_set_text(s_hint,"Yum yum!");
-    lv_obj_t *o=lv_event_get_target(e); lv_obj_set_style_bg_color(o,lv_color_hex(GOLD),0);
-    audio_play((sfx_id_t)(SFX_APPLE+s_food));
+    start_food((unsigned)(uintptr_t)lv_event_get_user_data(e),lv_event_get_target(e));
+}
+static void treats_cb(lv_event_t *e)
+{
+    (void)e;if(!s_eating)show(TREATS);
+}
+static void treat_cb(lv_event_t *e)
+{
+    unsigned i=(unsigned)(uintptr_t)lv_event_get_user_data(e);
+    if(!pet_food_unlocked(pet_state_get(),i+3)) {
+        unsigned remaining=pet_special_food(i)->stars-pet_state_get()->evolution_progress;
+        char text[80];snprintf(text,sizeof text,"%u more %s - care, play and grow!",remaining,remaining==1?"star":"stars");
+        lv_label_set_text(s_hint,text);return;
+    }
+    show(FOOD);start_food(i+3,NULL);
 }
 static void place_target(void)
 {
@@ -259,7 +284,7 @@ static void volume_cb(lv_event_t *e)
 }
 static const char *activity(void)
 {
-    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits"}[s_view];
+    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits","special treats"}[s_view];
 }
 static void talk_begin(void)
 {
@@ -345,6 +370,22 @@ static void trait_portrait(int x,int y,const Pet *p)
 {
     pixel_pet_render(&s_pet_art,p,PIXEL_IDLE,12,PIXEL_APPLE);
     art(s_root,&s_pet_art.image,x,y,512);
+}
+static void make_treats(void)
+{
+    lv_obj_t *back=button(s_root,24,22,48,48,0xffffff,nav_cb,FOOD);label(back,LV_SYMBOL_LEFT,0,11,48,true);
+    label(s_root,"Special treats",80,32,264,true);
+    s_hint=label(s_root,"Earn once, enjoy again and again!",16,83,336,false);
+    for(unsigned i=0;i<PET_SPECIAL_FOOD_COUNT;i++) {
+        const pet_special_food_t *f=pet_special_food(i);bool unlocked=pet_food_unlocked(pet_state_get(),i+3);
+        lv_obj_t *b=button(s_root,24,116+i*80,320,72,unlocked?0xffe9d3:0xe9ede6,treat_cb,(int)i);
+        art(b,pixel_special_food(i),8,10,512);
+        label(b,f->name,68,10,242,false);
+        char text[72];
+        if(unlocked)snprintf(text,sizeof text,f->stars==pet_state_get()->evolution_progress?"New! Tap to enjoy":"Yours! Tap to enjoy");
+        else snprintf(text,sizeof text,"%u stars  |  %lu more to go",f->stars,(unsigned long)(f->stars-pet_state_get()->evolution_progress));
+        label(b,text,62,39,252,false);
+    }
 }
 static void make_profile(void)
 {
@@ -643,7 +684,8 @@ static void show(View view)
     s_view=view; s_started=lv_tick_get(); s_hits=0; s_eating=false; s_hop_until=0;s_reaction_until=0;
     s_root=shape(lv_screen_active(),0,0,368,448,CREAM,0);
     if(view==HOME) { make_home(); return; }
-    if(view==PROFILE) {make_profile();
+    if(view==TREATS) {make_treats();
+    } else if(view==PROFILE) {make_profile();
     } else if(view==TRAIT) {make_trait();
     } else if(view==MUSIC) {make_music();
     } else if(view==GAMES) {make_games();
@@ -659,6 +701,9 @@ static void show(View view)
             icon(b,(int[]){0,7,8}[i],19,9);
             label(b,(const char*[]){"Apple","Toast","Cookie"}[i],0,65,94,false);
         }
+        unsigned unlocked=0;for(unsigned i=0;i<PET_SPECIAL_FOOD_COUNT;i++)unlocked+=pet_food_unlocked(pet_state_get(),i+3);
+        char text[64];snprintf(text,sizeof text,"Special treats  %u / %u",unlocked,PET_SPECIAL_FOOD_COUNT);
+        lv_obj_t *treats=button(s_root,29,405,310,38,GOLD,treats_cb,0);label(treats,text,0,10,310,false);
     } else if(view==CATCH) {
         room(false); header("Catch the stars"); progress(); make_pet(82,134);
         lv_obj_remove_flag(s_pet,LV_OBJ_FLAG_CLICKABLE);
@@ -697,15 +742,17 @@ static void show(View view)
         for(unsigned i=0;i<PET_DECORATION_COUNT;i++)if(earned==pet_decoration_threshold(i))gift=true;
         bool sticker=earned>0 && earned<=PET_STICKER_COUNT*5 && earned%5==0;
         if(sticker)s_album_page=(earned/5-1)/6;
-        label(s_root,gift?"New room gift!":sticker?"New sticker!":"Lovely caring!",24,40,320,true);
+        int new_food=pet_food_milestone(earned);
+        label(s_root,new_food>=0?"New special treat!":gift?"New room gift!":sticker?"New sticker!":"Lovely caring!",24,40,320,true);
         for(int i=0;i<12;i++) shape(s_root,24+(i*71)%315,95+(i*43)%220,7,12,colors[i%4],3);
         make_pet(82,132); star(s_root,163,93,GOLD);
         char text[64]; unsigned n=pet_state_get()->evolution_progress;
         snprintf(text,sizeof(text),"%lu %s  /  %u of 18 stickers",(unsigned long)n,n==1?"star":"stars",pet_sticker_count(pet_state_get()));
+        if(new_food>=0)snprintf(text,sizeof text,"%lu stars: treat%s%s",(unsigned long)n,gift?" + gift":"",sticker?" + sticker":"");
         label(s_root,text,24,337,320,false);
-        if(sticker) {
-            lv_obj_t *gift_button=button(s_root,24,376,152,48,GOLD,nav_cb,gift?DECORATIONS:ALBUM);
-            label(gift_button,gift?"My gift":"My sticker",0,16,152,false);
+        if(sticker || new_food>=0) {
+            lv_obj_t *gift_button=button(s_root,24,376,152,48,GOLD,nav_cb,new_food>=0?TREATS:gift?DECORATIONS:ALBUM);
+            label(gift_button,new_food>=0?pet_special_food((unsigned)new_food)->name:gift?"My gift":"My sticker",0,16,152,false);
             lv_obj_t *b=button(s_root,192,376,152,48,MINT,home_cb,0);label(b,"Home " LV_SYMBOL_HOME,0,16,152,false);
         } else {
             lv_obj_t *b=button(s_root,74,376,220,48,MINT,home_cb,0);label(b,"Home " LV_SYMBOL_HOME,0,11,220,true);

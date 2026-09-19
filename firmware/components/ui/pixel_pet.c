@@ -3,6 +3,7 @@
 #include <string.h>
 #include "pet_sprites.h"
 #include "pet_icons.h"
+#include "special_food_art.h"
 #define W PIXEL_PET_SIZE
 #define OUTLINE 0xff3d203dU
 #define CREAM   0xffffedb0U
@@ -23,18 +24,20 @@ void pixel_pet_render(pixel_pet_art_t *a,const Pet *pet,pixel_face_t face,unsign
     case PIXEL_THINK: id=phase%8<4?SPRITE_LISTEN:SPRITE_BLINK;break;
     case PIXEL_TALK: id=phase%3==0?SPRITE_IDLE:SPRITE_TALK;break;
     case PIXEL_EAT:
-        if(food>PIXEL_COOKIE)food=PIXEL_APPLE;
-        id=(pet_sprite_id_t)((phase<3?SPRITE_APPLE:SPRITE_APPLE_BITE)+food);break;
+        if((unsigned)food>=PET_FOOD_COUNT)food=PIXEL_APPLE;
+        if(food<3)id=(pet_sprite_id_t)((phase<3?SPRITE_APPLE:SPRITE_APPLE_BITE)+food);
+        break;
     case PIXEL_SLEEP: id=(phase/8)%2?SPRITE_SLEEP_BREATHE:SPRITE_SLEEP;break;
     case PIXEL_BATH: id=(phase/3)%2?SPRITE_BATH_SPLASH:SPRITE_BATH;break;
     case PIXEL_PLAY: id=(phase/3)%2?SPRITE_REACH_RIGHT:SPRITE_REACH_LEFT;break;
     }
     static const uint8_t coats[6][3]={{255,224,112},{188,156,231},{137,213,171},
                                     {245,164,196},{255,202,141},{139,204,232}};
+    const uint16_t *pixels=face==PIXEL_EAT && food>=3 ? special_food_pose[(phase<3?0:4)+food-3] : pet_sprite_pixels[id];
     unsigned coat=pet_trait_choice(pet,GENE_BODY_COLOR);
     memset(a->pixels,0,sizeof a->pixels);
     for(int y=0;y<W;y++)for(int x=0;x<W;x++) {
-        uint16_t rgb=pet_sprite_pixels[id][y*W+x];
+        uint16_t rgb=pixels[y*W+x];
         if(!rgb)continue;
         int r=((rgb>>11)&31)*255/31,g=((rgb>>5)&63)*255/63,b=(rgb&31)*255/31;
         // Tint only yellow fur; preserve food, quilt, tub, face and leaves.
@@ -102,4 +105,17 @@ const lv_image_dsc_t *pixel_decoration(unsigned kind)
         ready=true;
     }
     return &images[kind%6];
+}
+
+const lv_image_dsc_t *pixel_special_food(unsigned kind)
+{
+    static lv_image_dsc_t images[PET_SPECIAL_FOOD_COUNT];
+    static bool ready;
+    if(!ready) {
+        for(unsigned i=0;i<PET_SPECIAL_FOOD_COUNT;i++)images[i]=(lv_image_dsc_t){
+            .header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_ARGB8888,.w=24,.h=24,.stride=96},
+            .data_size=sizeof special_food_icon[i],.data=(const uint8_t*)special_food_icon[i]};
+        ready=true;
+    }
+    return &images[kind%PET_SPECIAL_FOOD_COUNT];
 }
