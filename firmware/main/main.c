@@ -10,6 +10,7 @@
 #include "ui.h"
 #include "audio.h"
 #include "power.h"
+#include "voice.h"
 
 static const char *TAG = "pet";
 
@@ -33,6 +34,7 @@ void app_main(void)
     // init). Without that, bsp_i2c_get_handle() returns NULL.
     power_init();
     audio_init();
+    voice_init();
     ui_init();
     radio_init();
 

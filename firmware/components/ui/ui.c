@@ -6,6 +6,8 @@
 #include "renderer.h"
 #include "power.h"
 #include "audio.h"
+#include "voice.h"
+#include <string.h>
 #include "esp_random.h"
 #include "lvgl.h"
 #include "pixel_pet.h"
@@ -18,12 +20,15 @@
 #define PINK 0xf3a8b6
 #define BLUE 0xa9dbef
 
-typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS } View;
+typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, TALK, CONNECTION, NAME } View;
 static View s_view;
 static lv_obj_t *s_root, *s_pet, *s_bars[4], *s_target, *s_counter;
 static lv_obj_t *s_dots[5], *s_hint, *s_sleep_bar;
 static lv_obj_t *s_volume_label, *s_volume_slider;
 static lv_obj_t *s_pet_image, *s_pet_heart;
+static lv_obj_t *s_voice_status, *s_caption_label, *s_connection, *s_name_input, *s_name_error;
+static bool s_talking, s_boot_down, s_boot_raw;
+static uint32_t s_talk_started, s_boot_changed, s_connection_tick;
 static pixel_pet_art_t s_pet_art;
 static pixel_face_t s_face;
 static uint32_t s_started, s_hop_until, s_last_tick;
@@ -72,7 +77,7 @@ static lv_obj_t *button(lv_obj_t *p,int x,int y,int w,int h,uint32_t c,lv_event_
     lv_obj_set_style_border_color(o,lv_color_hex(INK),0);
     lv_obj_set_style_border_width(o,2,0);
     lv_obj_set_style_shadow_ofs_y(o,3,0);
-    lv_obj_add_event_cb(o,cb,LV_EVENT_CLICKED,(void *)(intptr_t)data);
+    if(cb)lv_obj_add_event_cb(o,cb,LV_EVENT_CLICKED,(void *)(intptr_t)data);
     return o;
 }
 // All icon geometry is native LVGL: crisp at panel resolution, no glyph dependency.
@@ -194,6 +199,34 @@ static void volume_cb(lv_event_t *e)
     // One preview on release, rather than a queue of chirps while dragging.
     if (lv_event_get_code(e) == LV_EVENT_RELEASED) audio_play(SFX_FEED);
 }
+static const char *activity(void)
+{
+    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","talking","connection check","naming"}[s_view];
+}
+static void talk_begin(void)
+{
+    if(s_talking) return;
+    if(s_view!=TALK) show(TALK);
+    s_talking=true;s_talk_started=lv_tick_get();
+    voice_start_talk(pet_state_get(),activity());
+}
+static void talk_end(void)
+{
+    if(!s_talking)return;
+    s_talking=false;voice_end_talk(pet_state_get(),activity());
+}
+static void talk_cb(lv_event_t *e)
+{
+    if(lv_event_get_code(e)==LV_EVENT_PRESSED)talk_begin();
+    if(lv_event_get_code(e)==LV_EVENT_RELEASED || lv_event_get_code(e)==LV_EVENT_PRESS_LOST)talk_end();
+}
+static void check_cb(lv_event_t *e) { (void)e;voice_check(); }
+static void name_save(lv_event_t *e)
+{
+    (void)e;
+    if(pet_state_set_name(lv_textarea_get_text(s_name_input)))show(SETTINGS);
+    else lv_label_set_text(s_name_error,"Use 1-15 letters, starting with a letter.");
+}
 static void make_home(void)
 {
     meadow();
@@ -213,6 +246,9 @@ static void make_home(void)
     shape(s_root,24,327,320,23,CREAM,0);
     s_hint=label(s_root,"Tap me for a cuddle",28,331,312,false);
     make_pet(106,167);
+    lv_obj_t *talk=button(s_root,104,75,160,40,CREAM,nav_cb,TALK);
+    label(talk,pet_state_get()->name,0,10,160,false);
+    label(s_root,"Tap name to talk",104,119,160,false);
     lv_obj_t *album=button(s_root,24,249,54,51,CREAM,nav_cb,ALBUM); icon(album,4,-2,1);
     lv_obj_t *settings=button(s_root,294,250,50,48,CREAM,nav_cb,SETTINGS);
     label(settings,LV_SYMBOL_SETTINGS,0,11,50,true);
@@ -227,6 +263,8 @@ static void make_home(void)
 }
 static void show(View view)
 {
+    if(s_view==TALK && view!=TALK) { s_talking=false;voice_cancel(); }
+    s_voice_status=NULL;s_caption_label=NULL;s_connection=NULL;s_name_input=NULL;s_name_error=NULL;
     // Single owner: no screen-specific timers or callbacks survive the root.
     s_volume_label=NULL; s_volume_slider=NULL;
     s_pet=NULL; s_target=NULL; s_hint=NULL; s_counter=NULL; s_sleep_bar=NULL;
@@ -319,7 +357,40 @@ static void show(View view)
         lv_obj_add_event_cb(s_volume_slider,volume_cb,LV_EVENT_RELEASED,NULL);
         label(s_root,"Quiet",38,318,72,false);
         label(s_root,"Loud",258,318,72,false);
-        label(s_root,"No losing. No rushing.\nCare earns stars and stickers.\nPet progress saves automatically.",30,367,308,false);
+        lv_obj_t *wifi=button(s_root,34,348,300,36,BLUE,nav_cb,CONNECTION);
+        label(wifi,"Wi-Fi & voice connection",0,9,300,false);
+        lv_obj_t *name=button(s_root,34,395,300,36,0xffe9d3,nav_cb,NAME);
+        snprintf(b,sizeof(b),"Pet name: %s",pet_state_get()->name);label(name,b,0,9,300,false);
+    } else if(view==TALK) {
+        room(false);header(pet_state_get()->name);make_pet(106,127);
+        shape(s_root,24,82,320,28,CREAM,0);
+        s_voice_status=label(s_root,"Hold Talk or BOOT",24,88,320,false);
+        shape(s_root,24,277,320,69,CREAM,0);
+        s_caption_label=label(s_root,"Let's have a little chat!",32,285,304,false);
+        lv_obj_set_height(s_caption_label,58);lv_label_set_long_mode(s_caption_label,LV_LABEL_LONG_SCROLL);
+        lv_obj_t *b=button(s_root,64,362,240,62,MINT,NULL,0);
+        label(b,"Hold to talk",0,22,240,true);
+        lv_obj_add_event_cb(b,talk_cb,LV_EVENT_PRESSED,NULL);
+        lv_obj_add_event_cb(b,talk_cb,LV_EVENT_RELEASED,NULL);
+        lv_obj_add_event_cb(b,talk_cb,LV_EVENT_PRESS_LOST,NULL);
+    } else if(view==CONNECTION) {
+        header("Connection");
+        s_connection=label(s_root,"Checking...",24,105,320,false);
+        lv_obj_set_style_text_line_space(s_connection,12,0);
+        lv_obj_t *b=button(s_root,54,323,260,48,MINT,check_cb,0);label(b,"Check now",0,15,260,true);
+        label(s_root,"Wi-Fi connects automatically.\nVoice uses Ron's Mac mini.\nNormal play works offline.",24,385,320,false);
+        voice_check();s_connection_tick=0;
+    } else if(view==NAME) {
+        header("Pet name");
+        label(s_root,"What shall we call your pet?",24,88,320,false);
+        s_name_input=lv_textarea_create(s_root);lv_obj_set_pos(s_name_input,32,122);lv_obj_set_size(s_name_input,304,48);
+        lv_textarea_set_one_line(s_name_input,true);lv_textarea_set_max_length(s_name_input,15);
+        lv_textarea_set_accepted_chars(s_name_input,"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz '-");
+        lv_textarea_set_text(s_name_input,pet_state_get()->name);
+        s_name_error=label(s_root,"A short, friendly name",24,184,320,false);
+        lv_obj_t *b=button(s_root,96,215,176,43,MINT,name_save,0);label(b,"Save name",0,13,176,false);
+        lv_obj_t *kb=lv_keyboard_create(s_root);lv_obj_set_align(kb,LV_ALIGN_TOP_LEFT);lv_obj_set_pos(kb,0,275);lv_obj_set_size(kb,368,173);
+        lv_keyboard_set_textarea(kb,s_name_input);
     }
 }
 static void refresh(void)
@@ -335,6 +406,21 @@ static void refresh(void)
 static void frame(lv_timer_t *t)
 {
     (void)t; uint32_t now=lv_tick_get(), elapsed=now-s_started;
+    bool boot=voice_boot_pressed();
+    if(boot!=s_boot_raw) { s_boot_raw=boot;s_boot_changed=now; }
+    if(now-s_boot_changed>=80 && boot!=s_boot_down) {
+        s_boot_down=boot;if(boot)talk_begin();else talk_end();
+    }
+    if(s_talking && now-s_talk_started>=20000)talk_end();
+    voice_state_t vs=voice_get_state();
+    if(s_voice_status) {
+        lv_label_set_text(s_voice_status,s_talking && vs!=VOICE_OFFLINE?"Listening... let go when done":
+            vs==VOICE_THINKING?"Thinking...":vs==VOICE_SPEAKING || audio_voice_playing()?"Speaking...":
+            vs==VOICE_OFFLINE?"Voice offline - check Options":"Hold Talk or BOOT");
+        char caption[512];voice_caption(caption,sizeof(caption));
+        if(caption[0] && strcmp(lv_label_get_text(s_caption_label),caption))lv_label_set_text(s_caption_label,caption);
+    }
+    if(s_connection && now-s_connection_tick>=500) { char text[256];voice_status(text,sizeof(text));lv_label_set_text(s_connection,text);s_connection_tick=now; }
     if(now-s_last_tick>=10000) { pet_state_tick((uint32_t)time(NULL)); s_last_tick=now; refresh(); }
     if(s_pet) {
         bool hopping=(int32_t)(s_hop_until-now)>0;
@@ -342,7 +428,7 @@ static void frame(lv_timer_t *t)
         lv_obj_set_y(s_pet,s_pet_y+dy);
         bool asleep=s_view==SLEEP;
         bool delighted=s_view==PARTY || (hopping && !s_eating && !asleep);
-        s_face=asleep?PIXEL_SLEEP:s_eating?PIXEL_EAT:delighted?PIXEL_HAPPY:
+        s_face=asleep?PIXEL_SLEEP:(s_view==TALK && audio_voice_playing() && (now/180)%2)?PIXEL_EAT:s_eating?PIXEL_EAT:delighted?PIXEL_HAPPY:
                now%4200>4010?PIXEL_BLINK:PIXEL_IDLE;
         pixel_pet_render(&s_pet_art,pet_state_get(),s_face,now/180);
         lv_obj_invalidate(s_pet_image);

@@ -1,5 +1,7 @@
 # Little Meadow
 
+Voice v1: Sprout can now chat using the existing Mac mini voice stack. Tap its name or hold BOOT to talk. Rename it and check Wi-Fi in Options. See [voice controls, setup and rollback](docs/voice-v1.md).
+
 A gentle touchscreen pet for the **Waveshare ESP32-S3-Touch-AMOLED-1.8 (original SH8601 / FT3168 board)**, built with ESP-IDF 5.3.5 and LVGL 9.
 
 ![Screens](docs/previews/pixel-v1/overview.png)

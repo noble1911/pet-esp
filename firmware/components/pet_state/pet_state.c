@@ -51,6 +51,7 @@ static void pet_roll_genes(void)
 static void pet_hatch(void)
 {
     memset(&s_pet, 0, sizeof(s_pet));
+    strcpy(s_pet.name, "Sprout");
     s_pet.version   = PET_SCHEMA_VERSION;
     // Skip the egg phase for now — the renderer's asset library only has
     // baby+ art, and the egg→baby hatching transition is step 7's job.
@@ -70,6 +71,8 @@ void pet_state_init(void)
 {
     if (pet_state_load(&s_pet)) {
         s_have_pet = true;
+        s_pet.name[15] = 0;
+        if (!s_pet.name[0]) { strcpy(s_pet.name,"Sprout"); pet_state_save(&s_pet); }
         // Accept old saves without retaining exhausted development-mode needs.
         uint8_t *needs[] = {&s_pet.hunger, &s_pet.happiness, &s_pet.energy, &s_pet.hygiene};
         for (int i=0; i<4; i++) {
@@ -289,4 +292,17 @@ void pet_breed(const Pet *a, const Pet *b,
     (void)a; (void)b; (void)session_timestamp; (void)child_out;
     // TODO(build-order:13): deterministic mixer, byte-identical on both
     //                       devices (docs/gene_spec.md).
+}
+
+// Keep names short and readable on the toy and in the voice context.
+bool pet_state_set_name(const char *name)
+{
+    size_t n = name ? strlen(name) : 0;
+    if (!n || n > 15 || !((name[0]>='A' && name[0]<='Z') || (name[0]>='a' && name[0]<='z'))) return false;
+    for(size_t i=0;i<n;i++) if(!((name[i]>='A' && name[i]<='Z') || (name[i]>='a' && name[i]<='z') || name[i]==' ' || name[i]=='-' || name[i]=='\'')) return false;
+    Pet updated=s_pet;
+    strcpy(updated.name,name);
+    if(!pet_state_save(&updated)) return false;
+    s_pet=updated;
+    return true;
 }

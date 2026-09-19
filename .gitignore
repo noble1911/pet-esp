@@ -6,7 +6,6 @@ firmware/.pio/
 firmware/build/
 firmware/sdkconfig
 firmware/sdkconfig.old
-firmware/dependencies.lock
 managed_components/
 
 # Built sprite assets — produced by sprite_forge (architecture §8, §9).
@@ -41,3 +40,8 @@ backup/vector-v1/*.bin
 docs/previews/pixel-v1/*.ppm
 
 releases/pixel-v1/*.bin
+
+# Device-local Wi-Fi credentials and scoped pet token
+firmware/components/voice/secrets.h
+backup/pre-voice-v1/
+docs/previews/voice-v1/*.ppm

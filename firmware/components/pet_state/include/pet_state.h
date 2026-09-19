@@ -138,3 +138,5 @@ void pet_breed(const Pet *a, const Pet *b,
 #ifdef __cplusplus
 }
 #endif
+
+bool pet_state_set_name(const char *name);

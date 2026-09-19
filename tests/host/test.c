@@ -19,6 +19,16 @@ int power_battery_percent(void) { return 85; }
 bool power_is_charging(void) { return true; }
 void audio_play(sfx_id_t f) { (void)f; }
 void audio_set_muted(bool m) { (void)m; }
+void voice_init(void) {}
+void voice_start_talk(const Pet *p,const char *a) {(void)p;(void)a;}
+void voice_end_talk(const Pet *p,const char *a) {(void)p;(void)a;}
+void voice_cancel(void) {}
+void voice_check(void) {}
+voice_state_t voice_get_state(void) {return VOICE_READY;}
+void voice_status(char *s,size_t n) {snprintf(s,n,"Wi-Fi: Connected\nHome network\nIP: 192.168.1.42\nSignal: -52 dBm\nVoice server: Ready\nCheck passed: server replied");}
+void voice_caption(char *s,size_t n) {snprintf(s,n,"Hello! I'm Sprout. Shall we play?");}
+bool voice_boot_pressed(void) {return false;}
+bool audio_voice_playing(void) {return false;}
 static int test_volume=35;
 void audio_set_volume(int v) { test_volume=v; }
 int audio_get_volume(void) { return test_volume; }
@@ -53,6 +63,10 @@ int main(void)
         assert(pet_state_get()->stage==(n>=100?PET_STAGE_ELDER:n>=60?PET_STAGE_ADULT:n>=30?PET_STAGE_TEEN:n>=10?PET_STAGE_CHILD:PET_STAGE_BABY));
     }
     pet_state_reset();
+    assert(!strcmp(pet_state_get()->name,"Sprout"));
+    assert(!pet_state_set_name(""));assert(!pet_state_set_name("123"));assert(!pet_state_set_name("WayTooLongPetNameHere"));
+    assert(pet_state_set_name("Clover"));pet_state_init();assert(!strcmp(pet_state_get()->name,"Clover"));
+    assert(pet_state_set_name("Sprout"));
     saved.genes[GENE_BODY_COLOR]=0; pet_state_init();
     lv_init();lv_display_t *d=lv_display_create(368,448);
     lv_display_set_color_format(d,LV_COLOR_FORMAT_XRGB8888);
@@ -82,6 +96,13 @@ int main(void)
     assert(s_view==HOME);assert(pet_state_get()->evolution_progress==4);
     show(ALBUM);shot("album-locked");
     for(int i=0;i<26;i++)pet_state_play();show(ALBUM);shot("album");show(HOME);shot("grown-pet");
+    show(TALK);shot("talk");
+    tx=180;ty=392;pressed=true;advance(100);assert(s_talking);
+    pressed=false;advance(100);assert(!s_talking);
+    show(CONNECTION);advance(600);shot("connection");show(NAME);shot("name");
+    lv_textarea_set_text(s_name_input,"Clover");tap(180,235);assert(s_view==SETTINGS);assert(!strcmp(pet_state_get()->name,"Clover"));
+    show(NAME);lv_textarea_set_text(s_name_input,"");tap(180,235);assert(s_view==NAME);
+    pet_state_set_name("Sprout");
     show(SETTINGS);shot("settings");
     tap(245,292); assert(audio_get_volume()>65 && audio_get_volume()<85);
     int chosen_volume=audio_get_volume();

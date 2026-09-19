@@ -30,3 +30,14 @@ int audio_get_volume(void);
 #ifdef __cplusplus
 }
 #endif
+
+#include <stdint.h>
+#include <stddef.h>
+typedef void (*audio_mic_cb_t)(const uint8_t *, size_t);
+void audio_set_mic_callback(audio_mic_cb_t cb);
+void audio_set_capture(bool enabled);
+void audio_play_pcm(const uint8_t *data, size_t len);
+void audio_voice_begin(void);
+void audio_voice_end(void);
+void audio_voice_stop(void);
+bool audio_voice_playing(void);
