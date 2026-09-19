@@ -11,7 +11,7 @@ Voice and sound effects share one speaker worker and the existing volume/mute co
 ## Connection and identity
 
 - ESP → LAN `ws://192.168.1.117:8770/ws` → existing `esp-gateway` on Ron's Mac mini.
-- Groq STT → Butler `/api/voice/pet/stream` → Kokoro `bf_emma`, PCM16 mono 16 kHz.
+- Groq STT → Butler `/api/voice/pet/stream` → Kokoro `af_sky` (Brighter Sprout), speed 1.05 and +3 semitones with duration compensation; PCM16 mono 16 kHz.
 - Account: `pet-meadow-3cdc756e3104`, a separate `virtual_pet` profile. The scoped device token cannot switch to adult accounts.
 - The first successful turn binds the account to the saved pet ID. Renaming retains memory; a future reset to a new pet ID requires a new account/rebinding, to prevent accidental memory inheritance.
 - Each start/end of speech includes name, pet ID, stage, fullness, happiness, energy, cleanliness, care stars, all genes, generation, inventory, friends met and activity. Snapshot is copied on the UI thread; network work never blocks LVGL.
@@ -71,3 +71,16 @@ Spontaneous remarks get an explicit automatic-turn instruction, no memory-writin
 The shared helper change is preserved as `integrations/butler/llm_override.patch`; deploy it with the updated pet route. Backend isolation tests cover ordinary routing before/after tool use and pet override persistence across tool rounds.
 
 Live spontaneous-turn check passed: the ESP requested a remark at uptime 91.967 seconds, the pet route returned successfully, Kokoro generated speech, and the saved assistant message carried `proactive: true`. The running backend confirmed ordinary Butler `claude-opus-5` and pet `claude-haiku-4-5-20251001`. Gateway: 29 tests; backend: 6 tests; host gameplay/chatter guards passed.
+
+## Brighter Sprout voice
+
+The pet gateway applies `af_sky`, speed 1.05, and a three-semitone pitch/formant
+lift to pet sessions only. ffmpeg compensates the duration and emits mono PCM16
+at the device playback rate. Normal Butler sessions retain their configured
+voice and unprocessed synthesis path. Firmware and the Haiku model are unchanged.
+
+The selected audition and reproducible settings are in `art/voice-auditions/`.
+Gateway image now includes ffmpeg; processing is asynchronous, times out after
+30 seconds, and terminates its subprocess when a voice turn is cancelled.
+Pre-change deployment files are preserved on the Mac mini in
+`~/pet-voice-backup/pre-brighter-sprout/`.
