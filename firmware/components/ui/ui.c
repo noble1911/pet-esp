@@ -389,7 +389,9 @@ static void make_treats(void)
 }
 static void make_profile(void)
 {
-    const Pet *p=pet_state_get();char text[96];header("My pet");
+    const Pet *p=pet_state_get();char text[96];
+    lv_obj_t *back=button(s_root,24,22,48,48,0xffffff,nav_cb,SETTINGS);
+    label(back,LV_SYMBOL_LEFT,0,11,48,true);label(s_root,"My pet",80,32,264,true);
     trait_portrait(18,79,p);
     label(s_root,p->name,172,100,174,true);
     const char *stages[]={"Egg","Baby","Child","Teen","Grown-up","Elder"};
@@ -650,8 +652,6 @@ static void make_home(void)
     s_caption_label=label(caption,"",8,9,300,false);
     lv_obj_set_height(s_caption_label,52);lv_label_set_long_mode(s_caption_label,LV_LABEL_LONG_SCROLL);
     lv_obj_add_flag(caption,LV_OBJ_FLAG_HIDDEN);
-    lv_obj_t *profile=button(s_root,24,195,54,44,CREAM,nav_cb,PROFILE);
-    label(profile,"My\npet",0,5,54,false);
     lv_obj_t *album=button(s_root,24,249,54,51,CREAM,nav_cb,ALBUM); icon(album,4,-2,1);
     lv_obj_t *settings=button(s_root,294,250,50,48,CREAM,nav_cb,SETTINGS);
     label(settings,LV_SYMBOL_SETTINGS,0,11,50,true);
@@ -794,8 +794,10 @@ static void show(View view)
         label(s_root,"Loud",258,270,72,false);
         lv_obj_t *wifi=button(s_root,34,297,300,44,BLUE,nav_cb,CONNECTION);
         label(wifi,"Wi-Fi & voice connection",0,9,300,false);
-        lv_obj_t *name=button(s_root,34,347,300,44,0xffe9d3,nav_cb,NAME);
-        snprintf(b,sizeof(b),"Pet name: %s",pet_state_get()->name);label(name,b,0,9,300,false);
+        lv_obj_t *name=button(s_root,34,347,144,44,0xffe9d3,nav_cb,NAME);
+        label(name,"Pet name",0,13,144,false);
+        lv_obj_t *profile=button(s_root,190,347,144,44,MINT,nav_cb,PROFILE);
+        label(profile,"My pet",0,13,144,false);
         lv_obj_t *reset=button(s_root,34,397,300,44,PINK,nav_cb,RESET);
         label(reset,"Start fresh...",0,13,300,false);
     } else if(view==RESET) {

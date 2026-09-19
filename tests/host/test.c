@@ -419,7 +419,7 @@ int main(void)
         }
     }
     Pet before_traits=*pet_state_get(), saved_before_traits=saved;
-    s_profile_page=0;show(HOME);shot("traits-home");tap(50,215);assert(s_view==PROFILE);shot("profile-1");
+    s_profile_page=0;show(HOME);shot("traits-home");tap(320,275);assert(s_view==SETTINGS);tap(262,369);assert(s_view==PROFILE);shot("profile-1");
     tap(310,416);assert(s_profile_page==1);shot("profile-2");
     tap(50,416);assert(s_profile_page==0);
     for(unsigned page=0;page<2;page++) {
@@ -444,7 +444,7 @@ int main(void)
     assert(!memcmp(pet_state_get()->genes,before_traits.genes,8));
     assert(pet_state_get()->evolution_progress==before_traits.evolution_progress);
     assert(!memcmp(&saved,&saved_before_traits,sizeof saved));
-    tap(48,46);assert(s_view==HOME);
+    tap(48,46);assert(s_view==SETTINGS);tap(48,46);assert(s_view==HOME);
     // Start fresh is a two-step destructive action; opening/cancelling is safe.
     saved=snapshot;saved.evolution_progress=90;saved.inventory[15]=105;
     strcpy(saved.name,"Clover");pet_state_init();

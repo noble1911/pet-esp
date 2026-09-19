@@ -1,6 +1,6 @@
 # My pet and traits
 
-Tap **My pet** beside the pet on the home screen. The profile shows the saved name, life stage, care stars and personality, plus eight trait cards over two pages. Tap any card to explore its variants with the left/right arrows. The back arrow returns to the profile; the profile back arrow returns home.
+Open the cog, then **Options → My pet**. The profile shows the saved name, life stage, care stars and personality, plus eight trait cards over two pages. Tap any card to explore its variants with the left/right arrows. The back arrow returns to the profile; the profile back arrow returns to Options.
 
 - **Coat colour:** Sunny gold, Lilac, Mint, Rose, Peach, Sky blue. Preview uses a temporary copy of the pet and the production sprite renderer. All sixteen stored colour genes map to these six colours by modulo six, exactly as before.
 - **Personality:** Balanced, Shy, Bouncy, Sweet, Feisty, Playful, Dreamy, Curious. Each has a short, gentle description. Voice receives the pet's actual saved personality on every turn, including automatic remarks. It stays kind regardless of personality and never changes care rules or rewards.
