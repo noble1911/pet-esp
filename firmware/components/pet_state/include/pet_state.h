@@ -88,12 +88,10 @@ bool pet_state_save(const Pet *pet);
 
 const Pet *pet_state_get(void);  // current in-RAM pet (NULL if none)
 
-// Wipe the persisted Pet blob and re-hatch with a freshly-rolled gene
-// vector + new pet_id + all needs back to 100. Intended for development
-// / "test the variety" — exposed in the menu modal behind a confirmation
-// dialog. The caller is responsible for re-loading sprites and re-drawing
-// the pet on screen (genes drive both).
-void pet_state_reset(void);
+// Persist a fresh baby with new identity/genes, default name, full needs and
+// no progress/rewards. Other NVS namespaces remain intact. Returns false on
+// save failure without replacing the in-memory pet. Caller refreshes/reboots.
+bool pet_state_reset(void);
 
 // Real-time model (architecture §4.2) -----------------------------------
 

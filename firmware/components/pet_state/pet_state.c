@@ -41,30 +41,29 @@ static uint32_t s_decay_acc[ACC_COUNT];
 // Roll all 8 genes uniformly within their valid ranges (gene_spec.md
 // GENE_MAX). Out-of-range values clamp at render time, so this is safe
 // even if the per-byte modulus is later widened.
-static void pet_roll_genes(void)
+static void pet_roll_genes(Pet *pet)
 {
     for (int i = 0; i < 8; i++) {
-        s_pet.genes[i] = (uint8_t)(esp_random() % PET_GENE_MAX[i]);
+        pet->genes[i] = (uint8_t)(esp_random() % PET_GENE_MAX[i]);
     }
 }
 
-static void pet_hatch(void)
+static void pet_hatch(Pet *pet)
 {
-    memset(&s_pet, 0, sizeof(s_pet));
-    strcpy(s_pet.name, "Sprout");
-    s_pet.version   = PET_SCHEMA_VERSION;
+    memset(pet, 0, sizeof(*pet));
+    strcpy(pet->name, "Sprout");
+    pet->version   = PET_SCHEMA_VERSION;
     // Skip the egg phase for now — the renderer's asset library only has
     // baby+ art, and the egg→baby hatching transition is step 7's job.
-    s_pet.stage     = PET_STAGE_BABY;
-    s_pet.hunger    = 100;
-    s_pet.happiness = 100;
-    s_pet.energy    = 100;
-    s_pet.hygiene   = 100;
-    s_pet.last_tick = (uint32_t)time(NULL);
-    s_pet.birth_timestamp = s_pet.last_tick;
-    s_pet.pet_id    = ((uint64_t)esp_random() << 32) | esp_random();
-    pet_roll_genes();
-    s_have_pet = true;
+    pet->stage     = PET_STAGE_BABY;
+    pet->hunger    = 100;
+    pet->happiness = 100;
+    pet->energy    = 100;
+    pet->hygiene   = 100;
+    pet->last_tick = (uint32_t)time(NULL);
+    pet->birth_timestamp = pet->last_tick;
+    pet->pet_id    = ((uint64_t)esp_random() << 32) | esp_random();
+    pet_roll_genes(pet);
 }
 
 void pet_state_init(void)
@@ -98,7 +97,7 @@ void pet_state_init(void)
             if (s_pet.genes[i] != 0) { zero_genes = false; break; }
         }
         if (zero_genes) {
-            pet_roll_genes();
+            pet_roll_genes(&s_pet);
             if (s_pet.pet_id == 0) {
                 s_pet.pet_id = ((uint64_t)esp_random() << 32) | esp_random();
             }
@@ -109,7 +108,8 @@ void pet_state_init(void)
                  s_pet.stage, s_pet.hunger, s_pet.happiness,
                  s_pet.energy, s_pet.hygiene);
     } else {
-        pet_hatch();
+        pet_hatch(&s_pet);
+        s_have_pet = true;
         pet_state_save(&s_pet);
         ESP_LOGI(TAG, "hatched fresh egg");
     }
@@ -208,22 +208,18 @@ uint8_t pet_state_mood_emote(void)
     }
 }
 
-void pet_state_reset(void)
+bool pet_state_reset(void)
 {
-    // Targeted erase of the pet blob key — leaves other future namespaces
-    // intact, unlike nvs_flash_erase() which nukes everything in NVS.
-    nvs_handle_t h;
-    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_erase_key(h, NVS_KEY);
-        nvs_commit(h);
-        nvs_close(h);
-    }
-    // Drop banked decay so a fresh pet doesn't bleed needs from the
-    // previous one's accumulated time.
+    // Replace the blob only after the new pet is ready. Never erase the old
+    // save first; a failed write must leave the current pet available.
+    Pet fresh;
+    pet_hatch(&fresh);
+    if (!pet_state_save(&fresh)) return false;
+    s_pet = fresh;
+    s_have_pet = true;
     memset(s_decay_acc, 0, sizeof(s_decay_acc));
-    pet_hatch();
-    pet_state_save(&s_pet);
     ESP_LOGI(TAG, "reset: rolled fresh pet");
+    return true;
 }
 
 // Bank elapsed seconds into a per-need accumulator and apply decay when it

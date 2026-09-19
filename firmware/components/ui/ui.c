@@ -9,6 +9,7 @@
 #include "voice.h"
 #include <string.h>
 #include "esp_random.h"
+#include "esp_system.h"
 #include "lvgl.h"
 #include "pixel_pet.h"
 #include "pixel_rooms.h"
@@ -20,7 +21,7 @@
 #define PINK 0xf3a8b6
 #define BLUE 0xa9dbef
 
-typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC } View;
+typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET } View;
 static View s_view;
 static lv_obj_t *s_root, *s_pet, *s_bars[4], *s_target, *s_counter;
 static lv_obj_t *s_dots[5], *s_hint, *s_sleep_bar;
@@ -126,6 +127,19 @@ static void icon(lv_obj_t *p, int kind, int x, int y)
 }
 static void home_cb(lv_event_t *e) { (void)e; show(HOME); }
 static void nav_cb(lv_event_t *e) { show((View)(intptr_t)lv_event_get_user_data(e)); }
+static void reset_cb(lv_event_t *e)
+{
+    (void)e;
+    if(s_view!=RESET) return;
+    if(!pet_state_reset()) {
+        lv_label_set_text(s_hint,"Could not save. Please try again.");
+        return;
+    }
+    // Reboot clears queued speech, captions and all activity timers. The
+    // new identity selects fresh server memory on its first online chat.
+    voice_cancel();audio_stop_tune();
+    esp_restart();
+}
 static void header(const char *title)
 {
     lv_obj_t *b=button(s_root,24,22,48,48,0xffffff,home_cb,0);
@@ -244,7 +258,7 @@ static void volume_cb(lv_event_t *e)
 }
 static const char *activity(void)
 {
-    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music"}[s_view];
+    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups"}[s_view];
 }
 static void talk_begin(void)
 {
@@ -637,17 +651,17 @@ static void show(View view)
         make_album();
     } else if(view==SETTINGS) {
         header("Grown-ups");
-        lv_obj_t *chatter=button(s_root,54,77,260,28,CREAM,auto_chat_cb,0);
-        label(chatter,voice_auto_enabled()?"Little chats: on":"Little chats: off",0,5,260,false);
+        lv_obj_t *chatter=button(s_root,54,77,260,36,CREAM,auto_chat_cb,0);
+        label(chatter,voice_auto_enabled()?"Little chats: on":"Little chats: off",0,9,260,false);
         int batt=power_battery_percent(); char b[64];
         if(batt<0) snprintf(b,sizeof(b),"Battery: USB power");
         else snprintf(b,sizeof(b),"Battery: %d%%%s",batt,power_is_charging()?" (charging)":"");
-        label(s_root,b,24,111,320,false);
-        lv_obj_t *m=button(s_root,54,157,260,58,MINT,mute_cb,0); label(m,s_muted?"Sound off":"Sound on",0,16,260,true);
+        label(s_root,b,24,120,320,false);
+        lv_obj_t *m=button(s_root,54,148,260,44,MINT,mute_cb,0); label(m,s_muted?"Sound off":"Sound on",0,12,260,true);
         snprintf(b, sizeof(b), "Volume: %d%%", audio_get_volume());
-        s_volume_label=label(s_root,b,40,237,288,false);
+        s_volume_label=label(s_root,b,40,207,288,false);
         s_volume_slider=lv_slider_create(s_root);
-        lv_obj_set_pos(s_volume_slider,58,284); lv_obj_set_size(s_volume_slider,252,16);
+        lv_obj_set_pos(s_volume_slider,58,242); lv_obj_set_size(s_volume_slider,252,16);
         lv_slider_set_range(s_volume_slider,0,100);
         lv_slider_set_value(s_volume_slider,audio_get_volume(),LV_ANIM_OFF);
         lv_obj_set_ext_click_area(s_volume_slider,18);
@@ -660,12 +674,26 @@ static void show(View view)
         lv_obj_set_style_radius(s_volume_slider,3,LV_PART_KNOB);
         lv_obj_add_event_cb(s_volume_slider,volume_cb,LV_EVENT_VALUE_CHANGED,NULL);
         lv_obj_add_event_cb(s_volume_slider,volume_cb,LV_EVENT_RELEASED,NULL);
-        label(s_root,"Quiet",38,318,72,false);
-        label(s_root,"Loud",258,318,72,false);
-        lv_obj_t *wifi=button(s_root,34,348,300,36,BLUE,nav_cb,CONNECTION);
+        label(s_root,"Quiet",38,270,72,false);
+        label(s_root,"Loud",258,270,72,false);
+        lv_obj_t *wifi=button(s_root,34,297,300,44,BLUE,nav_cb,CONNECTION);
         label(wifi,"Wi-Fi & voice connection",0,9,300,false);
-        lv_obj_t *name=button(s_root,34,395,300,36,0xffe9d3,nav_cb,NAME);
+        lv_obj_t *name=button(s_root,34,347,300,44,0xffe9d3,nav_cb,NAME);
         snprintf(b,sizeof(b),"Pet name: %s",pet_state_get()->name);label(name,b,0,9,300,false);
+        lv_obj_t *reset=button(s_root,34,397,300,44,PINK,nav_cb,RESET);
+        label(reset,"Start fresh...",0,13,300,false);
+    } else if(view==RESET) {
+        lv_obj_t *back=button(s_root,24,22,48,48,0xffffff,nav_cb,SETTINGS);
+        label(back,LV_SYMBOL_LEFT,0,11,48,true);
+        label(s_root,"Start fresh?",80,32,264,true);
+        label(s_root,"A new little beginning",24,96,320,true);
+        label(s_root,"This replaces your pet with a new\nbaby named Sprout. Stars, stickers,\nroom gifts and chats start fresh.",24,148,320,false);
+        label(s_root,"You cannot undo this on the toy.\nWi-Fi setup stays saved.",24,225,320,false);
+        s_hint=label(s_root,"Ask a grown-up before restarting.",16,283,336,false);
+        lv_obj_t *keep=button(s_root,34,328,300,48,MINT,nav_cb,SETTINGS);
+        label(keep,"Keep my pet",0,15,300,true);
+        lv_obj_t *reset=button(s_root,34,390,300,48,PINK,reset_cb,0);
+        label(reset,"Yes, start fresh",0,15,300,true);
     } else if(view==CONNECTION) {
         header("Connection");
         s_connection=label(s_root,"Checking...",24,105,320,false);

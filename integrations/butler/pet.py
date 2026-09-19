@@ -1,6 +1,7 @@
 """Isolated Little Meadow voice route. Mounted under /api/voice by voice.py."""
 from __future__ import annotations
 import copy
+import hashlib
 import json
 import logging
 from typing import Literal
@@ -114,22 +115,44 @@ def reward_snapshot(pet: PetState) -> dict:
             "unlocked_room_gifts": [name for name, need in zip(names, thresholds) if pet.stars >= need],
             "equipped_room_gift": names[equipped] if 0 <= equipped < 6 and pet.stars >= thresholds[equipped] else None}
 
+async def resolve_pet_account(pool, device_user_id: str, pet_id: str) -> str:
+    """Keep the original pet's memory; new pets get isolated child accounts.
+
+    Only explicitly enabled device accounts can provision new generations.
+    The authenticated device identity, never model output, scopes the key.
+    """
+    soul = await pool.fetchval("SELECT soul FROM butler.users WHERE id=$1", device_user_id)
+    if isinstance(soul, str): soul = json.loads(soul)
+    if not soul or soul.get("profile") != "virtual_pet":
+        raise HTTPException(403, "A dedicated pet account is required")
+    bound = await pool.fetchval(
+        "UPDATE butler.users SET soul=jsonb_set(soul, '{pet_id}', to_jsonb($2::text)) "
+        "WHERE id=$1 AND (soul->>'pet_id' IS NULL OR soul->>'pet_id'=$2) RETURNING id",
+        device_user_id, pet_id)
+    if bound: return device_user_id
+    if soul.get("allow_new_pets") is not True or soul.get("device_account"):
+        raise HTTPException(409, "This account belongs to another pet")
+    digest = hashlib.sha256(json.dumps([device_user_id, pet_id]).encode()).hexdigest()
+    user_id = "pet-life-" + digest
+    child_soul = {"profile": "virtual_pet", "pet_id": pet_id,
+                  "device_account": device_user_id, "butler_name": "Sprout",
+                  "voice": soul.get("voice", "bf_emma")}
+    # Idempotent across reconnects and concurrent turns. Never copy memories,
+    # household permissions, login credentials or notification preferences.
+    await pool.execute("INSERT INTO butler.users (id,name,soul,permissions,notification_prefs) "
+        "VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::jsonb) ON CONFLICT (id) DO NOTHING",
+        user_id, "Little Meadow pet", child_soul, {}, {"enabled": False, "categories": []})
+    owned = await pool.fetchval("SELECT id FROM butler.users WHERE id=$1 "
+        "AND soul->>'profile'='virtual_pet' AND soul->>'pet_id'=$2 "
+        "AND soul->>'device_account'=$3", user_id, pet_id, device_user_id)
+    if not owned: raise HTTPException(409, "Pet account identity conflict")
+    return user_id
+
 @router.post("/pet/stream")
 async def pet_stream(req: PetTurn, caller: str | None = Depends(get_internal_or_user),
                      pool: DatabasePool = Depends(get_db_pool),
                      tools: dict[str, Tool] = Depends(get_tools)):
-    user_id = caller or req.user_id
-    soul = await pool.pool.fetchval("SELECT soul FROM butler.users WHERE id=$1", user_id)
-    if isinstance(soul, str): soul = json.loads(soul)
-    if not soul or soul.get("profile") != "virtual_pet":
-        raise HTTPException(403, "A dedicated pet account is required")
-    # A reset/new pet must not inherit a previous pet's memories. Provision once,
-    # then reject mismatches rather than silently attaching them to the account.
-    bound = await pool.pool.fetchval(
-        "UPDATE butler.users SET soul=jsonb_set(soul, '{pet_id}', to_jsonb($2::text)) "
-        "WHERE id=$1 AND (soul->>'pet_id' IS NULL OR soul->>'pet_id'=$2) RETURNING id",
-        user_id, req.pet.pet_id)
-    if not bound: raise HTTPException(409, "This account belongs to another pet")
+    user_id = await resolve_pet_account(pool.pool, caller or req.user_id, req.pet.pet_id)
     facts = [] if req.proactive else await _load_facts(pool.pool, user_id, current_message=req.transcript,
                               embedding_service=get_embedding_service())
     history = await load_conversation_messages(pool, user_id, channel="voice", limit=6)

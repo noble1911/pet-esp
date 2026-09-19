@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include "nvs.h"
 #include "../../firmware/components/ui/ui.c"
+static unsigned test_restarts;
+void esp_restart(void) {test_restarts++;}
 static Pet saved;
 static bool has_save, fail_save;
 uint32_t esp_random(void) { static uint32_t seed=15; seed=seed*1664525+1013904223; return seed; }
@@ -153,11 +155,11 @@ int main(void)
     show(NAME);lv_textarea_set_text(s_name_input,"");tap(180,235);assert(s_view==NAME);
     pet_state_set_name("Sprout");
     show(SETTINGS);shot("settings");
-    tap(245,292); assert(audio_get_volume()>65 && audio_get_volume()<85);
+    tap(245,250); assert(audio_get_volume()>65 && audio_get_volume()<85);
     int chosen_volume=audio_get_volume();
     tap(180,180);assert(s_muted);assert(audio_get_volume()==chosen_volume);
-    tap(58,292);assert(audio_get_volume()==0);
-    tap(310,292);assert(audio_get_volume()==100);
+    tap(58,250);assert(audio_get_volume()==0);
+    tap(310,250);assert(audio_get_volume()==100);
     show(HOME);show(SETTINGS);assert(lv_slider_get_value(s_volume_slider)==100);
     audio_set_volume(35);show(SETTINGS);
     // Repeated navigation catches dangling object pointers/timers.
@@ -344,6 +346,32 @@ int main(void)
         }
         test_playing=false;
     }
+    // Start fresh is a two-step destructive action; opening/cancelling is safe.
+    saved=snapshot;saved.evolution_progress=90;saved.inventory[15]=105;
+    strcpy(saved.name,"Clover");pet_state_init();
+    Pet old_pet=*pet_state_get();Pet old_save=saved;
+    show(SETTINGS);tap(180,417);assert(s_view==RESET);shot("start-fresh");
+    assert(!memcmp(pet_state_get(),&old_pet,sizeof old_pet));
+    tap(180,351);assert(s_view==SETTINGS && test_restarts==0);
+    assert(!memcmp(&saved,&old_save,sizeof saved));
+    tap(180,417);tap(48,46);assert(s_view==SETTINGS && test_restarts==0);
+    tap(180,417);fail_save=true;tap(180,414);
+    assert(s_view==RESET && test_restarts==0);
+    assert(!memcmp(pet_state_get(),&old_pet,sizeof old_pet));
+    assert(!memcmp(&saved,&old_save,sizeof saved));
+    assert(strstr(lv_label_get_text(s_hint),"Could not save"));shot("start-fresh-error");
+    fail_save=false;tap(180,414);assert(test_restarts==1);
+    const Pet *fresh=pet_state_get();
+    assert(fresh->pet_id!=old_pet.pet_id && fresh->stage==PET_STAGE_BABY);
+    assert(!strcmp(fresh->name,"Sprout") && fresh->evolution_progress==0);
+    assert(fresh->hunger==100 && fresh->happiness==100 && fresh->energy==100 && fresh->hygiene==100);
+    assert(pet_sticker_count(fresh)==0 && pet_equipped_decoration(fresh)==-1);
+    assert(fresh->friends_met==0 && fresh->parent_a==0 && fresh->parent_b==0);
+    for(unsigned i=0;i<16;i++)assert(fresh->inventory[i]==0);
+    assert(!memcmp(fresh,&saved,sizeof saved));
+    uint64_t fresh_id=fresh->pet_id;pet_state_init();assert(pet_state_get()->pet_id==fresh_id);
+    pet_state_tick(pet_state_get()->last_tick+179);assert(pet_state_get()->hunger==100);
+    show(HOME);shot("fresh-pet");
     saved = snapshot; pet_state_init();
     puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 stickers, saved room gifts, weather and visits");
     lv_deinit();

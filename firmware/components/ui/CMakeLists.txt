@@ -3,5 +3,5 @@
 idf_component_register(
     SRCS "ui.c" "pixel_pet.c"
     INCLUDE_DIRS "include"
-    REQUIRES pet_state renderer radio power audio voice lvgl__lvgl
+    REQUIRES esp_system pet_state renderer radio power audio voice lvgl__lvgl
 )

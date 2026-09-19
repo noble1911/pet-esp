@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi import HTTPException
 from pydantic import ValidationError
-from api.routes.pet import PetState, PetTurn, PetMemory, pet_stream, PET_MODEL, reward_snapshot, PetTune, PetCompose
+from api.routes.pet import PetState, PetTurn, PetMemory, pet_stream, PET_MODEL, reward_snapshot, PetTune, PetCompose, resolve_pet_account
 from api.llm import _ToolRouter
 from api.config import settings
 
@@ -62,6 +62,51 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         req=PetTurn(user_id='pet',session_id='test',transcript='hello',pet=STATE)
         with self.assertRaises(HTTPException) as c:await pet_stream(req,None,pool,{})
         self.assertEqual(c.exception.status_code,409)
+    async def test_new_pet_accounts_are_stable_and_isolated(self):
+        pool=MagicMock();pool.execute=AsyncMock()
+        created=[]
+        for device,pet in [('device-a','1234567890abcdef'),('device-a','1234567890abcdef'),
+                           ('device-a','abcdef1234567890'),('device-b','1234567890abcdef')]:
+            async def lookup(sql,*args):
+                if sql.startswith('SELECT soul'):return {'profile':'virtual_pet','allow_new_pets':True}
+                if sql.startswith('UPDATE'):return None
+                return args[0]
+            pool.fetchval=AsyncMock(side_effect=lookup)
+            created.append(await resolve_pet_account(pool,device,pet))
+            args=pool.execute.call_args.args
+            self.assertEqual(args[3]['pet_id'],pet)
+            self.assertEqual(args[3]['device_account'],device)
+            self.assertNotIn('allow_new_pets',args[3])
+            self.assertEqual(args[4],{})
+            self.assertFalse(args[5]['enabled'])
+        self.assertEqual(created[0],created[1])
+        self.assertEqual(len(set(created)),3)
+        for soul in ({'profile':'virtual_pet','allow_new_pets':True,'device_account':'parent'},
+                     {'profile':'virtual_pet','allow_new_pets':'true'}):
+            pool.fetchval=AsyncMock(side_effect=[soul,None])
+            with self.assertRaises(HTTPException):await resolve_pet_account(pool,'child','1234567890abcdef')
+        pool.fetchval=AsyncMock(side_effect=[{'profile':'virtual_pet','allow_new_pets':True},None,None])
+        with self.assertRaises(HTTPException):await resolve_pet_account(pool,'device-a','1234567890abcdef')
+
+    async def test_reset_routes_all_memory_and_model_context_to_new_account(self):
+        pool=MagicMock();captured={}
+        async def brain(**kwargs):
+            captured.update(kwargs)
+            if False:yield ''
+        req=PetTurn(user_id='untrusted-request-id',session_id='test',transcript='hello',pet=STATE)
+        with patch('api.routes.pet.resolve_pet_account',AsyncMock(return_value='fresh-account')) as resolve, \
+             patch('api.routes.pet._load_facts',AsyncMock(return_value=[])) as facts, \
+             patch('api.routes.pet.load_conversation_messages',AsyncMock(return_value=[])) as history, \
+             patch('api.routes.pet.get_embedding_service',return_value=None), \
+             patch('api.routes.pet.stream_chat_with_tools',brain):
+            response=await pet_stream(req,'authenticated-device',pool,{'remember_fact':MagicMock()})
+            async for _ in response.body_iterator:pass
+        resolve.assert_awaited_once_with(pool.pool,'authenticated-device',STATE['pet_id'])
+        self.assertEqual(facts.call_args.args[1],'fresh-account')
+        self.assertEqual(history.call_args.args[1],'fresh-account')
+        self.assertEqual(captured['user_id'],'fresh-account')
+        self.assertEqual(captured['tools']['remember_fact'].user_id,'fresh-account')
+
     async def test_only_memory_tools_and_current_snapshot_reach_model(self):
         pool=MagicMock();pool.pool.fetchval=AsyncMock(side_effect=[{'profile':'virtual_pet'},'pet'])
         req=PetTurn(user_id='pet',session_id='test',transcript='hello',pet=STATE)
