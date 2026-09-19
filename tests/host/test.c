@@ -71,8 +71,11 @@ static void shot(const char *name) {
     char path[256];snprintf(path,sizeof path,"%s.ppm",name);FILE *f=fopen(path,"wb");assert(f);
     fprintf(f,"P6\n368 448\n255\n");for(int i=0;i<368*448;i++) { unsigned char b[]={pixels[i]>>16,pixels[i]>>8,pixels[i]};fwrite(b,1,3,f); }fclose(f);
 }
+#include "genetics_checks.h"
 int main(void)
 {
+    genetics_checks();
+    if(getenv("PET_CAPTURE_GENETICS"))return 0;
     pet_state_init(); assert(pet_state_get()->hunger==100);
     uint32_t tick=pet_state_get()->last_tick;
     pet_state_tick(tick+179);assert(pet_state_get()->hunger==100);
@@ -513,7 +516,7 @@ int main(void)
     for(unsigned food=0;food<PET_FOOD_COUNT;food++)for(unsigned pose=0;pose<2;pose++) {
         pixel_pet_art_t a,b;Pet p=*pet_state_get();p.stage=PET_STAGE_CHILD;p.genes[GENE_BODY_COLOR]=0;
         pixel_pet_render(&a,&p,PIXEL_EAT,pose?4:0,(pixel_food_t)food);
-        for(unsigned coat=1;coat<6;coat++) {
+        for(unsigned coat=1;coat<16;coat++) {
             p.genes[GENE_BODY_COLOR]=coat;
             pixel_pet_render(&b,&p,PIXEL_EAT,pose?4:0,(pixel_food_t)food);
             unsigned recoloured_belly=0;
@@ -542,7 +545,7 @@ int main(void)
             Pet variant=*pet_state_get();variant.genes[gene]=(uint8_t)value;
             unsigned choice=pet_trait_choice(&variant,gene);
             assert(choice<t->count && t->values[choice] && t->descriptions[choice]);
-            if(gene==GENE_BODY_COLOR)assert(choice==value%6);
+            if(gene==GENE_BODY_COLOR)assert(choice==value%16);
         }
     }
     Pet before_traits=*pet_state_get(), saved_before_traits=saved;
@@ -557,9 +560,11 @@ int main(void)
             tap(50,418);assert(s_trait_variant==(start+t->count-1)%t->count);
             tap(310,418);assert(s_trait_variant==start);
             for(unsigned choice=0;choice<t->count;choice++) {
-                if(s_trait_gene==GENE_BODY_COLOR || s_trait_gene==GENE_PERSONALITY) {
-                    snprintf(name,sizeof name,"trait-%u-choice-%u",s_trait_gene,s_trait_variant);shot(name);
-                }
+                Pet preview=*pet_state_get();pixel_pet_art_t expected;
+                if(s_trait_gene!=GENE_PERSONALITY)preview.genes[s_trait_gene]=(uint8_t)s_trait_variant;
+                pixel_pet_render(&expected,&preview,PIXEL_IDLE,12,PIXEL_APPLE);
+                assert(!memcmp(expected.pixels,s_pet_art.pixels,sizeof expected.pixels));
+                snprintf(name,sizeof name,"trait-%u-choice-%u",s_trait_gene,s_trait_variant);shot(name);
                 tap(310,418);
             }
             assert(s_trait_variant==start);
@@ -631,7 +636,7 @@ int main(void)
     advance(900);s_muted=true;audio_set_muted(true);test_power_press=true;advance(2100);
     assert(s_view==HOME && test_audio_muted);s_muted=false;audio_set_muted(false);
     assert(pet_state_get()->pet_id==before_sleep.pet_id && pet_state_get()->evolution_progress==before_sleep.evolution_progress);
-    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; all eight traits, preview wraparound and unchanged genes/save; milestone foods, six coats without yellow eating patches, paced meals, fades, compact mic, expanded back targets, PWR save/cancel/error recovery, reactive ball arcs and delayed fifth-bounce reward, cancel, failed saves and capped bonuses");
+    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; all eight traits, preview wraparound and unchanged genes/save; milestone foods, sixteen coats without yellow eating patches, paced meals, fades, compact mic, expanded back targets, PWR save/cancel/error recovery, reactive ball arcs and delayed fifth-bounce reward, cancel, failed saves and capped bonuses");
     lv_deinit();
     return 0;
 }

@@ -6,16 +6,24 @@ component and the sprite forge.
 
 ## Current illustrated sprite build
 
-The table below describes the original eight-byte genetics storage format. The current complete-sprite renderer uses **only body colour** for genetic appearance: byte 1 modulo 6 selects Sunny gold, Lilac, Mint, Rose, Peach or Sky blue. The sixteen stored colour values share those six looks. Growth accessories come from life stage, not from another gene.
+All seven appearance bytes are rendered: eight body profiles, sixteen coats,
+eight eye styles, sixteen iris colours, eight ears/tufts, eight smiles and eight
+markings. Personality remains voice/behaviour context, not appearance. The
+illustrated action poses retain closed eyes during blinks, naps and delighted
+munches; food and care props can cover markings. Growth keepsakes depend on life
+stage. See [genetic sprites](genetic-sprites-v1.md) for the palette compatibility,
+pose coverage, previews and rollback.
 
-**My pet** exposes every saved gene. Body shape, eye shape, eye colour, ears, mouth and markings are labelled saved for later; they do not yet affect these sprites. Their numbered variants preserve the original indices without assigning fictional appearances. Personality now supplies explicit voice context from the same catalogue as the UI; the earlier archetypes energetic, grumpy and sleepy are displayed as Bouncy, Feisty and Dreamy. This does not alter genes, needs, rewards or gameplay difficulty. The legacy emote selector remains separate from the illustrated UI.
-
-`data/pet_traits.json` is the current display catalogue. Run `python3 scripts/generate_pet_traits.py` after editing it, or `--check` to verify the committed firmware/voice tables. See [profile and browsing](pet-traits-v1.md).
+`data/pet_traits.json` is the shared catalogue. Run
+`python3 scripts/generate_pet_traits.py` after editing it, or `--check` to verify.
+`data/pet_traits_legacy.json` is frozen for voice snapshots from older firmware.
+Firmware artwork version 2 selects the current catalogue on the backend;
+missing version selects the old six-colour mapping and dormant appearance traits.
 
 ## Gene vector
 
 Exactly **8 bytes**, stored in `Pet.genes[8]`. Each byte indexes a part
-table or palette. Out-of-range values are clamped to the table size at
+table or palette. Out-of-range values are reduced modulo the table size at
 render time, never rejected.
 
 | Byte | Name          | Range | Selects                                  |

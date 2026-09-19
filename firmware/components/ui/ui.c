@@ -469,7 +469,7 @@ static void make_profile(void)
         label(card,t->label,0,7,154,false);
         label(card,t->values[pet_trait_choice(p,gene)],0,29,154,false);
     }
-    label(s_root,s_profile_page?"These looks are saved for later.":"Grey traits: looks saved for later.",16,372,336,false);
+    label(s_root,"My little details make me unique!",16,372,336,false);
     lv_obj_t *prev=button(s_root,24,397,62,44,BLUE,profile_page_cb,0);label(prev,LV_SYMBOL_LEFT,0,10,62,true);
     snprintf(text,sizeof text,"Traits %u / 2",s_profile_page+1);label(s_root,text,94,411,180,false);
     lv_obj_t *next=button(s_root,282,397,62,44,BLUE,profile_page_cb,0);label(next,LV_SYMBOL_RIGHT,0,10,62,true);
@@ -482,11 +482,11 @@ static void make_trait(void)
     bool mine=s_trait_variant==pet_trait_choice(p,s_trait_gene);
     label(s_root,mine?"This one is mine!":"Just looking - your pet stays the same",16,116,336,false);
     Pet preview=*p;
-    if(s_trait_gene==GENE_BODY_COLOR)preview.genes[GENE_BODY_COLOR]=(uint8_t)s_trait_variant;
+    if(s_trait_gene!=GENE_PERSONALITY)preview.genes[s_trait_gene]=(uint8_t)s_trait_variant;
     trait_portrait(112,138,&preview);
     label(s_root,t->descriptions[s_trait_variant],24,291,320,false);
     label(s_root,!strcmp(t->mode,"stored")?"Saved trait - not shown in my picture":
-        s_trait_gene==GENE_PERSONALITY?"My personality helps shape my chats":"Try looking at all six coat colours",16,353,336,false);
+        s_trait_gene==GENE_PERSONALITY?"My personality helps shape my chats":"Look at the different styles with the arrows",16,353,336,false);
     lv_obj_t *prev=button(s_root,24,395,62,46,BLUE,trait_browse_cb,-1);label(prev,LV_SYMBOL_LEFT,0,12,62,true);
     snprintf(text,sizeof text,"%u / %u",s_trait_variant+1,t->count);label(s_root,text,94,410,180,false);
     lv_obj_t *next=button(s_root,282,395,62,46,BLUE,trait_browse_cb,1);label(next,LV_SYMBOL_RIGHT,0,12,62,true);
