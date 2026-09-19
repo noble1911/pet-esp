@@ -28,7 +28,7 @@
 #define PET_GATEWAY "ws://192.168.1.117:8770/ws"
 
 typedef struct { int kind; Pet pet; char activity[32]; pet_event_t event; unsigned event_age; size_t len; uint8_t pcm[640]; } Command;
-enum { START=1, END, CANCEL, PCM, CHECK, HELLO, REMARK, REACT };
+enum { START=1, END, CANCEL, PCM, CHECK, HELLO, REMARK, REACT, MUSIC };
 static QueueHandle_t s_commands;
 static esp_websocket_client_handle_t s_ws;
 static atomic_bool s_auto=true;
@@ -117,6 +117,14 @@ static bool auto_turn(int kind,const Pet *pet,const char *activity)
        atomic_load(&s_requested) || voice_get_state()!=VOICE_READY || audio_voice_playing())return false;
     caption_set("");atomic_store(&s_state,VOICE_THINKING);
     if(!enqueue(kind,pet,activity)) {atomic_store(&s_state,VOICE_READY);return false;}
+    return true;
+}
+bool voice_make_tune(const Pet *pet,const char *activity)
+{
+    if(!audio_is_ready() || !atomic_load(&s_ready) || atomic_load(&s_requested) ||
+       voice_get_state()!=VOICE_READY || audio_voice_playing())return false;
+    audio_stop_tune();caption_set("");atomic_store(&s_state,VOICE_THINKING);
+    if(!enqueue(MUSIC,pet,activity)){atomic_store(&s_state,VOICE_READY);return false;}
     return true;
 }
 bool voice_remark(const Pet *pet,const char *activity) {return auto_turn(REMARK,pet,activity);}
@@ -224,12 +232,12 @@ static void worker(void *arg)
         } else if(c.kind==END) {
             audio_set_capture(false);atomic_store(&s_capturing,false);
             o=message("audio_end");add_pet(o,&c);send_json(o);turn_started=now;ESP_LOGI("voice","capture ended; mic frames=%u peak=%d",audio_mic_frames(),audio_mic_level());
-        } else if(c.kind==REMARK || c.kind==REACT) {
+        } else if(c.kind==REMARK || c.kind==REACT || c.kind==MUSIC) {
             // A manual press takes priority, even if it races this queued remark.
             if(atomic_load(&s_requested))continue;
-            if(!voice_auto_enabled()) {atomic_store(&s_state,VOICE_READY);continue;}
-            o=message("text");add_pet(o,&c);cJSON_AddBoolToObject(o,"proactive",true);
-            cJSON_AddStringToObject(o,"text",c.kind==REACT?"A device care event just happened. React briefly to the recent_event in the snapshot; nobody has spoken.":"A quiet moment in the pet's room.");
+            if(c.kind!=MUSIC && !voice_auto_enabled()) {atomic_store(&s_state,VOICE_READY);continue;}
+            o=message("text");add_pet(o,&c);cJSON_AddBoolToObject(o,"proactive",c.kind!=MUSIC);
+            cJSON_AddStringToObject(o,"text",c.kind==MUSIC?"I tapped Make me a tune on the toy. Please use compose_tune to create and play an original little melody for me, with just a short introduction.":c.kind==REACT?"A device care event just happened. React briefly to the recent_event in the snapshot; nobody has spoken.":"A quiet moment in the pet's room.");
             if(!send_json(o)) {atomic_store(&s_state,VOICE_READY);continue;}
             turn_started=now;ESP_LOGI("voice","automatic pet %s requested",c.kind==REACT?"reaction":"remark");
         } else if(c.kind==PCM && atomic_load(&s_ready)) {

@@ -17,7 +17,14 @@ bool renderer_lock(uint32_t ms) { (void)ms;return true; }
 void renderer_unlock(void) {}
 int power_battery_percent(void) { return 85; }
 bool power_is_charging(void) { return true; }
-void audio_play(sfx_id_t f) { (void)f; }
+static sfx_id_t test_sfx;
+void audio_play(sfx_id_t f) {test_sfx=f;}
+static bool test_tune;
+static unsigned test_tune_choice, test_compositions;
+bool audio_play_tune(unsigned n) {test_tune=n<3;test_tune_choice=n;return test_tune;}
+void audio_stop_tune(void) {test_tune=false;}
+bool audio_tune_playing(void) {return test_tune;}
+bool voice_make_tune(const Pet *p,const char *a) {(void)p;(void)a;test_compositions++;return true;}
 void audio_set_muted(bool m) { (void)m; }
 static bool test_boot, test_auto=true;
 static unsigned test_remarks, test_reactions;
@@ -307,6 +314,22 @@ int main(void)
         }
     }
 
+    // Music is available from Play; offline choices and compose never earn care
+    // stars, Stop works, leaving stops local playback, muted compose is blocked.
+    test_voice=VOICE_READY;s_muted=false;audio_set_volume(100);show(GAMES);tap(180,421);assert(s_view==MUSIC);shot("music");
+    unsigned music_before=pet_state_get()->evolution_progress;
+    for(unsigned i=0;i<3;i++){tap(180,150+57*(int)i);assert(test_tune && test_tune_choice==i);}
+    test_boot=true;advance(200);assert(!test_tune && strstr(lv_label_get_text(s_hint),"listening"));
+    test_boot=false;advance(200);test_voice=VOICE_READY;
+    tap(180,400);assert(!test_tune);unsigned composed=test_compositions;
+    tap(180,336);assert(test_compositions==composed+1);
+    test_voice=VOICE_THINKING;tap(180,150);assert(!test_tune && strstr(lv_label_get_text(s_hint),"Stop"));test_voice=VOICE_READY;
+    s_muted=true;tap(180,336);assert(test_compositions==composed+1);s_muted=false;
+    tap(180,150);assert(test_tune);tap(48,46);assert(s_view==HOME && !test_tune);
+    assert(pet_state_get()->evolution_progress==music_before);
+    show(FOOD);tap(180,350);assert(test_sfx==SFX_TOAST);tap(48,46);
+    show(BALL);tap(lv_obj_get_x(s_target)+48,lv_obj_get_y(s_target)+48);assert(test_sfx==SFX_BOUNCE);
+    show(HIDE);tap(76+108*(int)s_hiding,275);assert(test_sfx==SFX_FOUND);show(HOME);
     // Record production animation frames for visual review, including all foods.
     if(getenv("PET_CAPTURE_ANIMATIONS")) {
         saved=snapshot;saved.evolution_progress=10;pet_state_init();

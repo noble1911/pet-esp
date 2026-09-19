@@ -8,6 +8,8 @@ A gentle touchscreen pet for the **Waveshare ESP32-S3-Touch-AMOLED-1.8 (original
 
 ## Current version
 
+Care has distinct sound effects, and **Play → Music** offers three offline tunes plus a button to ask Sprout for an original melody. You can also say “make me a happy tune.” See [sounds, music, tests and rollback](docs/sound-music-v1.md).
+
 Playtime adds Peekaboo, Bouncy ball, eighteen stickers, six saved room gifts, butterfly visits and changing pretend window weather. Existing progress counts toward every reward. See [controls, testing and rollback](docs/playtime-v1.md).
 
 ## Pixel-art v1

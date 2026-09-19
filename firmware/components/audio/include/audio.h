@@ -1,6 +1,4 @@
-// audio — simple beep/chirp cues. Samples are loaded from SD
-// (architecture §2). Synthesised-vs-sampled is a deferred decision
-// (architecture §11) — keep this surface minimal.
+// One speaker owner for distinct synthesized effects, short tunes and speech.
 
 #pragma once
 #include <stdbool.h>
@@ -15,14 +13,21 @@ typedef enum {
     SFX_HAPPY,
     SFX_MEET,      // beacon / "!" prompt
     SFX_EMOTE,
+    SFX_APPLE, SFX_TOAST, SFX_COOKIE, SFX_CUDDLE, SFX_STAR,
+    SFX_BUBBLE, SFX_BOUNCE, SFX_HIDE, SFX_FOUND, SFX_SLEEP,
+    SFX_BATH, SFX_STICKER, SFX_GIFT, SFX_SELECT, SFX_BUTTERFLY,
+    SFX_COUNT,
 } sfx_id_t;
 
 // Bring up the audio codec. Safe no-op until audio is wired in.
 void audio_init(void);
 
-// TODO(build-order:12): non-blocking one-shot cue.
+// Non-blocking, latest cue wins; mic and speech take priority.
 void audio_play(sfx_id_t sfx);
 void audio_set_muted(bool muted);
+bool audio_play_tune(unsigned tune); // three original offline patterns, 0..2
+void audio_stop_tune(void);
+bool audio_tune_playing(void);
 // Session volume, 0 (silent) to 100. Mute preserves the selected level.
 void audio_set_volume(int percent);
 int audio_get_volume(void);

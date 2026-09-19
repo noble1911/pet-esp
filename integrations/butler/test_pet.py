@@ -1,10 +1,11 @@
 """Run with: docker exec -i butler-api python < test_pet.py"""
 import asyncio
+import json
 import unittest
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi import HTTPException
 from pydantic import ValidationError
-from api.routes.pet import PetState, PetTurn, PetMemory, pet_stream, PET_MODEL, reward_snapshot
+from api.routes.pet import PetState, PetTurn, PetMemory, pet_stream, PET_MODEL, reward_snapshot, PetTune, PetCompose
 from api.llm import _ToolRouter
 from api.config import settings
 
@@ -71,7 +72,7 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         with patch('api.routes.pet._load_facts',AsyncMock(return_value=[])),patch('api.routes.pet.load_conversation_messages',AsyncMock(return_value=[])),patch('api.routes.pet.get_embedding_service',return_value=None),patch('api.routes.pet.stream_chat_with_tools',brain):
             response=await pet_stream(req,None,pool,{'remember_fact':MagicMock(),'home_assistant':MagicMock(),'display_image':MagicMock()})
             async for _ in response.body_iterator:pass
-        self.assertEqual(set(captured['tools']),{'remember_fact'})
+        self.assertEqual(set(captured['tools']),{'remember_fact','compose_tune'})
         self.assertIn('"fullness":80',captured['system_prompt'][1]['text'])
         self.assertEqual(captured['user_id'],'pet')
         self.assertEqual(captured['model_override'],PET_MODEL)
@@ -103,4 +104,29 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(f'React directly to this just-completed device event: {event}' in prompts,age==0)
             self.assertEqual(captured['tools'],{})
             self.assertEqual(captured['max_tokens'],100)
+    async def test_compose_validation_and_one_tune_per_turn(self):
+        score=dict(title='Tiny meadow',tempo=120,instrument='bell',notes=[[60,4],[64,4],[67,4],[72,4]])
+        for patch_value in ({'tempo':True},{'tempo':0},{'instrument':'shell'},{'notes':[[60,8]]*24},{'notes':[[0,4]]*4},{'notes':[[90,4]]*4},{'notes':[[60.5,4]]*4},{'notes':[[60,True]]*4}):
+            with self.assertRaises(ValidationError):PetTune(**{**score,**patch_value})
+        tool=PetCompose()
+        self.assertIn('Invalid',await tool.execute(**{**score,'tempo':0}))
+        self.assertIsNone(tool.tune)
+        self.assertIn('queued',await tool.execute(**score))
+        first=tool.tune
+        self.assertIn('already',await tool.execute(**score));self.assertIs(tool.tune,first)
+
+    async def test_composition_reaches_structured_stream(self):
+        pool=MagicMock();pool.pool.fetchval=AsyncMock(side_effect=[{'profile':'virtual_pet'},'pet'])
+        score=dict(title='Tiny meadow',tempo=120,instrument='bell',notes=[[60,4],[64,4],[67,4],[72,4]])
+        async def brain(**kwargs):
+            await kwargs['tools']['compose_tune'].execute(**score)
+            if False:yield ''
+        req=PetTurn(user_id='pet',session_id='test',transcript='Make a tune',pet=STATE)
+        with patch('api.routes.pet._load_facts',AsyncMock(return_value=[])),patch('api.routes.pet.load_conversation_messages',AsyncMock(return_value=[])),patch('api.routes.pet.get_embedding_service',return_value=None),patch('api.routes.pet.stream_chat_with_tools',brain):
+            response=await pet_stream(req,None,pool,{})
+            chunks=[chunk async for chunk in response.body_iterator]
+        event=json.loads(chunks[0][6:])
+        self.assertEqual(event,{'type':'pet_music','score':score})
+        self.assertEqual(chunks[-1],'data: [DONE]\n\n')
+
 if __name__=='__main__':unittest.main()

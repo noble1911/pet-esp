@@ -24,3 +24,5 @@ typedef enum { PET_EVENT_NONE, PET_EVENT_CUDDLE, PET_EVENT_APPLE, PET_EVENT_TOAS
     PET_EVENT_BATH, PET_EVENT_NAP, PET_EVENT_HIDE, PET_EVENT_BALL, PET_EVENT_BUTTERFLY } pet_event_t;
 void voice_note_event(pet_event_t event);
 bool voice_react(const Pet *pet, const char *activity);
+
+bool voice_make_tune(const Pet *pet, const char *activity);
