@@ -20,7 +20,7 @@
 #define PINK 0xf3a8b6
 #define BLUE 0xa9dbef
 
-typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, TALK, CONNECTION, NAME } View;
+typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME } View;
 static View s_view;
 static lv_obj_t *s_root, *s_pet, *s_bars[4], *s_target, *s_counter;
 static lv_obj_t *s_dots[5], *s_hint, *s_sleep_bar;
@@ -28,7 +28,8 @@ static lv_obj_t *s_volume_label, *s_volume_slider;
 static lv_obj_t *s_pet_image, *s_pet_heart;
 static lv_obj_t *s_voice_status, *s_caption_label, *s_connection, *s_name_input, *s_name_error;
 static bool s_talking, s_boot_down, s_boot_raw;
-static uint32_t s_talk_started, s_boot_changed, s_connection_tick;
+static uint32_t s_talk_started, s_boot_changed, s_connection_tick, s_voice_until;
+static char s_last_caption[512];
 static pixel_pet_art_t s_pet_art;
 static pixel_face_t s_face;
 static uint32_t s_started, s_hop_until, s_last_tick;
@@ -201,13 +202,12 @@ static void volume_cb(lv_event_t *e)
 }
 static const char *activity(void)
 {
-    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","talking","connection check","naming"}[s_view];
+    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming"}[s_view];
 }
 static void talk_begin(void)
 {
     if(s_talking) return;
-    if(s_view!=TALK) show(TALK);
-    s_talking=true;s_talk_started=lv_tick_get();
+    s_talking=true;s_talk_started=lv_tick_get();s_voice_until=0;
     voice_start_talk(pet_state_get(),activity());
 }
 static void talk_end(void)
@@ -246,9 +246,16 @@ static void make_home(void)
     shape(s_root,24,327,320,23,CREAM,0);
     s_hint=label(s_root,"Tap me for a cuddle",28,331,312,false);
     make_pet(106,167);
-    lv_obj_t *talk=button(s_root,104,75,160,40,CREAM,nav_cb,TALK);
-    label(talk,pet_state_get()->name,0,10,160,false);
-    label(s_root,"Tap name to talk",104,119,160,false);
+    // Voice stays in the room: hold the speech bubble; all care buttons remain.
+    lv_obj_t *talk=button(s_root,24,67,320,70,CREAM,NULL,0);
+    s_caption_label=label(talk,"",8,9,304,false);
+    lv_obj_set_height(s_caption_label,52);lv_label_set_long_mode(s_caption_label,LV_LABEL_LONG_SCROLL);
+    char greeting[80];snprintf(greeting,sizeof(greeting),"%s\nHold here to talk",pet_state_get()->name);
+    lv_label_set_text(s_caption_label,greeting);
+    s_voice_status=s_hint;
+    lv_obj_add_event_cb(talk,talk_cb,LV_EVENT_PRESSED,NULL);
+    lv_obj_add_event_cb(talk,talk_cb,LV_EVENT_RELEASED,NULL);
+    lv_obj_add_event_cb(talk,talk_cb,LV_EVENT_PRESS_LOST,NULL);
     lv_obj_t *album=button(s_root,24,249,54,51,CREAM,nav_cb,ALBUM); icon(album,4,-2,1);
     lv_obj_t *settings=button(s_root,294,250,50,48,CREAM,nav_cb,SETTINGS);
     label(settings,LV_SYMBOL_SETTINGS,0,11,50,true);
@@ -263,7 +270,7 @@ static void make_home(void)
 }
 static void show(View view)
 {
-    if(s_view==TALK && view!=TALK) { s_talking=false;voice_cancel(); }
+    if(s_talking && !s_boot_down)talk_end();
     s_voice_status=NULL;s_caption_label=NULL;s_connection=NULL;s_name_input=NULL;s_name_error=NULL;
     // Single owner: no screen-specific timers or callbacks survive the root.
     s_volume_label=NULL; s_volume_slider=NULL;
@@ -361,18 +368,6 @@ static void show(View view)
         label(wifi,"Wi-Fi & voice connection",0,9,300,false);
         lv_obj_t *name=button(s_root,34,395,300,36,0xffe9d3,nav_cb,NAME);
         snprintf(b,sizeof(b),"Pet name: %s",pet_state_get()->name);label(name,b,0,9,300,false);
-    } else if(view==TALK) {
-        room(false);header(pet_state_get()->name);make_pet(106,127);
-        shape(s_root,24,82,320,28,CREAM,0);
-        s_voice_status=label(s_root,"Hold Talk or BOOT",24,88,320,false);
-        shape(s_root,24,277,320,69,CREAM,0);
-        s_caption_label=label(s_root,"Let's have a little chat!",32,285,304,false);
-        lv_obj_set_height(s_caption_label,58);lv_label_set_long_mode(s_caption_label,LV_LABEL_LONG_SCROLL);
-        lv_obj_t *b=button(s_root,64,362,240,62,MINT,NULL,0);
-        label(b,"Hold to talk",0,22,240,true);
-        lv_obj_add_event_cb(b,talk_cb,LV_EVENT_PRESSED,NULL);
-        lv_obj_add_event_cb(b,talk_cb,LV_EVENT_RELEASED,NULL);
-        lv_obj_add_event_cb(b,talk_cb,LV_EVENT_PRESS_LOST,NULL);
     } else if(view==CONNECTION) {
         header("Connection");
         s_connection=label(s_root,"Checking...",24,105,320,false);
@@ -414,11 +409,25 @@ static void frame(lv_timer_t *t)
     if(s_talking && now-s_talk_started>=20000)talk_end();
     voice_state_t vs=voice_get_state();
     if(s_voice_status) {
-        lv_label_set_text(s_voice_status,s_talking && vs!=VOICE_OFFLINE?"Listening... let go when done":
-            vs==VOICE_THINKING?"Thinking...":vs==VOICE_SPEAKING || audio_voice_playing()?"Speaking...":
-            vs==VOICE_OFFLINE?"Voice offline - check Options":"Hold Talk or BOOT");
         char caption[512];voice_caption(caption,sizeof(caption));
-        if(caption[0] && strcmp(lv_label_get_text(s_caption_label),caption))lv_label_set_text(s_caption_label,caption);
+        bool speaking=vs==VOICE_SPEAKING || audio_voice_playing();
+        bool busy=vs==VOICE_LISTENING || vs==VOICE_THINKING || speaking;
+        if(strcmp(s_last_caption,caption)) { snprintf(s_last_caption,sizeof(s_last_caption),"%s",caption);s_voice_until=now+12000; }
+        if(busy && caption[0])s_voice_until=now+12000;
+        if(vs==VOICE_LISTENING) {
+            int level=audio_mic_level();
+            lv_label_set_text(s_caption_label,level>300?"I'm listening...\nI can hear your voice!":"I'm listening...\nSpeak close to me");
+            lv_label_set_text(s_voice_status,"Let go when you're done");
+        } else if(vs==VOICE_THINKING) {
+            lv_label_set_text(s_caption_label,"One little moment...");
+            lv_label_set_text(s_voice_status,"Thinking...");
+        } else if(caption[0] && (int32_t)(s_voice_until-now)>0) {
+            if(strcmp(lv_label_get_text(s_caption_label),caption))lv_label_set_text(s_caption_label,caption);
+            lv_label_set_text(s_voice_status,speaking?"Chatting with you":"Hold here or BOOT to reply");
+        } else {
+            char greeting[80];snprintf(greeting,sizeof(greeting),"%s\nHold here to talk",pet_state_get()->name);
+            if(strcmp(lv_label_get_text(s_caption_label),greeting)) {lv_label_set_text(s_caption_label,greeting);refresh();}
+        }
     }
     if(s_connection && now-s_connection_tick>=500) { char text[256];voice_status(text,sizeof(text));lv_label_set_text(s_connection,text);s_connection_tick=now; }
     if(now-s_last_tick>=10000) { pet_state_tick((uint32_t)time(NULL)); s_last_tick=now; refresh(); }
@@ -428,7 +437,7 @@ static void frame(lv_timer_t *t)
         lv_obj_set_y(s_pet,s_pet_y+dy);
         bool asleep=s_view==SLEEP;
         bool delighted=s_view==PARTY || (hopping && !s_eating && !asleep);
-        s_face=asleep?PIXEL_SLEEP:(s_view==TALK && audio_voice_playing() && (now/180)%2)?PIXEL_EAT:s_eating?PIXEL_EAT:delighted?PIXEL_HAPPY:
+        s_face=asleep?PIXEL_SLEEP:(audio_voice_playing() && (now/180)%2)?PIXEL_EAT:s_eating?PIXEL_EAT:delighted?PIXEL_HAPPY:
                now%4200>4010?PIXEL_BLINK:PIXEL_IDLE;
         pixel_pet_render(&s_pet_art,pet_state_get(),s_face,now/180);
         lv_obj_invalidate(s_pet_image);

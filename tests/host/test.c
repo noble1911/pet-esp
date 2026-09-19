@@ -19,16 +19,21 @@ int power_battery_percent(void) { return 85; }
 bool power_is_charging(void) { return true; }
 void audio_play(sfx_id_t f) { (void)f; }
 void audio_set_muted(bool m) { (void)m; }
+static bool test_boot;
+static int test_starts, test_ends;
+static voice_state_t test_voice=VOICE_READY;
 void voice_init(void) {}
-void voice_start_talk(const Pet *p,const char *a) {(void)p;(void)a;}
-void voice_end_talk(const Pet *p,const char *a) {(void)p;(void)a;}
+void voice_start_talk(const Pet *p,const char *a) {assert(p && a);test_starts++;test_voice=VOICE_LISTENING;}
+void voice_end_talk(const Pet *p,const char *a) {assert(p && a);test_ends++;test_voice=VOICE_THINKING;}
 void voice_cancel(void) {}
 void voice_check(void) {}
-voice_state_t voice_get_state(void) {return VOICE_READY;}
+voice_state_t voice_get_state(void) {return test_voice;}
 void voice_status(char *s,size_t n) {snprintf(s,n,"Wi-Fi: Connected\nHome network\nIP: 192.168.1.42\nSignal: -52 dBm\nVoice server: Ready\nCheck passed: server replied");}
 void voice_caption(char *s,size_t n) {snprintf(s,n,"Hello! I'm Sprout. Shall we play?");}
-bool voice_boot_pressed(void) {return false;}
+bool voice_boot_pressed(void) {return test_boot;}
 bool audio_voice_playing(void) {return false;}
+bool audio_is_ready(void) {return true;}
+int audio_mic_level(void) {return 800;}
 static int test_volume=35;
 void audio_set_volume(int v) { test_volume=v; }
 int audio_get_volume(void) { return test_volume; }
@@ -96,9 +101,21 @@ int main(void)
     assert(s_view==HOME);assert(pet_state_get()->evolution_progress==4);
     show(ALBUM);shot("album-locked");
     for(int i=0;i<26;i++)pet_state_play();show(ALBUM);shot("album");show(HOME);shot("grown-pet");
-    show(TALK);shot("talk");
-    tx=180;ty=392;pressed=true;advance(100);assert(s_talking);
-    pressed=false;advance(100);assert(!s_talking);
+    show(HOME);shot("talk");
+    tx=180;ty=96;pressed=true;advance(100);assert(s_talking);assert(s_view==HOME);
+    assert(strstr(lv_label_get_text(s_caption_label),"listening"));
+    lv_obj_t *room_root=s_root;
+    pressed=false;advance(100);assert(!s_talking);assert(test_starts==1 && test_ends==1);
+    assert(s_view==HOME && s_root==room_root && s_bars[0]);
+    test_voice=VOICE_READY;
+    test_boot=true;advance(200);assert(s_talking && s_view==HOME);
+    test_boot=false;advance(200);assert(!s_talking);assert(test_starts==2 && test_ends==2);
+    test_voice=VOICE_READY;
+    test_boot=true;advance(200);advance(20100);assert(!s_talking);assert(test_ends==3);
+    test_boot=false;advance(200);assert(test_ends==3);test_voice=VOICE_READY;
+    // BOOT also leaves an ongoing care activity in place.
+    show(BATH);test_boot=true;advance(200);assert(s_view==BATH && s_talking);
+    test_boot=false;advance(200);assert(s_view==BATH && !s_talking);test_voice=VOICE_READY;
     show(CONNECTION);advance(600);shot("connection");show(NAME);shot("name");
     lv_textarea_set_text(s_name_input,"Clover");tap(180,235);assert(s_view==SETTINGS);assert(!strcmp(pet_state_get()->name,"Clover"));
     show(NAME);lv_textarea_set_text(s_name_input,"");tap(180,235);assert(s_view==NAME);

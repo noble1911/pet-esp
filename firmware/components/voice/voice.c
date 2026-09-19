@@ -31,7 +31,7 @@ enum { START=1, END, CANCEL, PCM, CHECK, HELLO };
 static QueueHandle_t s_commands;
 static esp_websocket_client_handle_t s_ws;
 static atomic_int s_state=VOICE_OFFLINE;
-static atomic_bool s_wifi, s_ready, s_capturing, s_overflow;
+static atomic_bool s_wifi, s_ready, s_capturing, s_overflow, s_requested;
 static portMUX_TYPE s_lock=portMUX_INITIALIZER_UNLOCKED;
 static char s_ip[20]="--", s_caption[512]="", s_check[48]="";
 static char s_rx[8192];
@@ -72,15 +72,16 @@ static void enqueue(int kind,const Pet *pet,const char *activity)
 void voice_start_talk(const Pet *pet,const char *activity)
 {
     if(!atomic_load(&s_ready)) { caption_set("Voice is offline. Check Wi-Fi in Options.");return; }
-    if(atomic_load(&s_capturing)) return;
+    if(!audio_is_ready()) { caption_set("My microphone needs a restart.");atomic_store(&s_state,VOICE_ERROR);return; }
+    if(atomic_exchange(&s_requested,true)) return;
     audio_voice_stop();caption_set("");atomic_store(&s_state,VOICE_LISTENING);enqueue(START,pet,activity);
 }
 void voice_end_talk(const Pet *pet,const char *activity)
 {
     audio_set_capture(false);atomic_store(&s_capturing,false);
-    if(voice_get_state()==VOICE_LISTENING) { atomic_store(&s_state,VOICE_THINKING);enqueue(END,pet,activity); }
+    if(atomic_exchange(&s_requested,false)) { atomic_store(&s_state,VOICE_THINKING);enqueue(END,pet,activity); }
 }
-void voice_cancel(void) { audio_set_capture(false);atomic_store(&s_capturing,false);audio_voice_stop();enqueue(CANCEL,NULL,NULL); }
+void voice_cancel(void) { atomic_store(&s_requested,false);audio_set_capture(false);atomic_store(&s_capturing,false);audio_voice_stop();enqueue(CANCEL,NULL,NULL); }
 void voice_check(void) { enqueue(CHECK,NULL,NULL); }
 static void mic(const uint8_t *p,size_t n)
 {
@@ -105,13 +106,16 @@ static void handle_json(void)
         if(!strcmp(type,"ready")) { atomic_store(&s_ready,true);atomic_store(&s_state,VOICE_READY);ESP_LOGI("voice","pet gateway ready"); }
         else if(!strcmp(type,"state") && cJSON_IsString(v)) {
             // Never let a delayed idle/listening event overwrite a new local capture.
-            if(!atomic_load(&s_capturing)) atomic_store(&s_state,!strcmp(v->valuestring,"listening")?VOICE_LISTENING:!strcmp(v->valuestring,"thinking")?VOICE_THINKING:!strcmp(v->valuestring,"speaking")?VOICE_SPEAKING:VOICE_READY);
+            if(!atomic_load(&s_requested) && strcmp(v->valuestring,"listening")) atomic_store(&s_state,!strcmp(v->valuestring,"thinking")?VOICE_THINKING:!strcmp(v->valuestring,"speaking")?VOICE_SPEAKING:VOICE_READY);
         } else if(!strcmp(type,"say")) {
             const cJSON *text=cJSON_GetObjectItem(o,"text");
             if(cJSON_IsString(text) && voice_get_state()!=VOICE_LISTENING) { portENTER_CRITICAL(&s_lock);strlcat(s_caption,text->valuestring,sizeof(s_caption));portEXIT_CRITICAL(&s_lock); }
         } else if(!strcmp(type,"tts_start") && voice_get_state()!=VOICE_LISTENING) audio_voice_begin();
         else if(!strcmp(type,"tts_end")) audio_voice_end();
-        else if(!strcmp(type,"error")) { atomic_store(&s_state,VOICE_ERROR);audio_set_capture(false);atomic_store(&s_capturing,false);audio_voice_stop();caption_set("I couldn't hear back. Please try again.");ESP_LOGW("voice","gateway reported an error"); }
+        else if(!strcmp(type,"error")) { atomic_store(&s_state,VOICE_ERROR);audio_set_capture(false);atomic_store(&s_capturing,false);audio_voice_stop();const cJSON *code=cJSON_GetObjectItem(o,"code");
+            const char *reason=cJSON_IsString(code)?code->valuestring:"unknown";
+            caption_set(!strcmp(reason,"no_speech")?"I didn't catch that. Hold and speak close to me.":!strcmp(reason,"no_audio")?"My microphone didn't send sound. Please restart me.":"I couldn't hear back. Please try again.");
+            ESP_LOGW("voice","gateway error: %s",reason); }
         else if(!strcmp(type,"pong")) { portENTER_CRITICAL(&s_lock);s_last_pong=xTaskGetTickCount();snprintf(s_check,sizeof(s_check),"Check passed: server replied");portEXIT_CRITICAL(&s_lock); }
     }
     cJSON_Delete(o);
@@ -121,7 +125,7 @@ static void ws_event(void *arg,esp_event_base_t base,int32_t id,void *event)
     (void)arg;(void)base;esp_websocket_event_data_t *d=event;
     if(id==WEBSOCKET_EVENT_CONNECTED) { s_rxlen=0;s_rxop=0;enqueue(HELLO,NULL,NULL); }
     else if(id==WEBSOCKET_EVENT_DISCONNECTED) {
-        atomic_store(&s_ready,false);atomic_store(&s_state,VOICE_OFFLINE);atomic_store(&s_capturing,false);
+        atomic_store(&s_ready,false);atomic_store(&s_state,VOICE_OFFLINE);atomic_store(&s_capturing,false);atomic_store(&s_requested,false);
         audio_set_capture(false);audio_voice_stop();s_rxlen=0;s_rxop=0;
     } else if(id==WEBSOCKET_EVENT_DATA) {
         int op=d->op_code;if(op==1 || op==2)s_rxop=op;
@@ -177,10 +181,11 @@ static void worker(void *arg)
             a=cJSON_AddObjectToObject(o,"playback");cJSON_AddNumberToObject(a,"rate",16000);send_json(o);
         } else if(c.kind==START && atomic_load(&s_ready)) {
             o=message("audio_start");add_pet(o,&c);
-            if(send_json(o)) { capture_started=now;atomic_store(&s_capturing,true);audio_set_capture(true); }
+            if(send_json(o)) { capture_started=now;atomic_store(&s_capturing,true);audio_set_capture(true);ESP_LOGI("voice","capture started; mic frames=%u",audio_mic_frames()); }
+            else { atomic_store(&s_requested,false);atomic_store(&s_state,VOICE_ERROR);caption_set("Connection lost. Please try again."); }
         } else if(c.kind==END) {
             audio_set_capture(false);atomic_store(&s_capturing,false);
-            o=message("audio_end");add_pet(o,&c);send_json(o);turn_started=now;
+            o=message("audio_end");add_pet(o,&c);send_json(o);turn_started=now;ESP_LOGI("voice","capture ended; mic frames=%u peak=%d",audio_mic_frames(),audio_mic_level());
         } else if(c.kind==PCM && atomic_load(&s_ready)) {
             if(esp_websocket_client_send_bin(s_ws,(char*)c.pcm,c.len,pdMS_TO_TICKS(300))!=(int)c.len) atomic_store(&s_overflow,true);
         } else if(c.kind==CANCEL) { send_json(message("cancel"));atomic_store(&s_state,atomic_load(&s_ready)?VOICE_READY:VOICE_OFFLINE); }

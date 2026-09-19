@@ -1,12 +1,12 @@
 # Sprout's voice — first version
 
-Sprout is the default name. Tap its name at home to open the talking screen, then hold **Talk**, speak, and release. Holding **BOOT** opens the same screen and records while held. Recording stops after 20 seconds. Do not hold BOOT while powering on: that is the ESP's download-mode shortcut. PWR retains its existing hardware function.
+Sprout is the default name. Hold the speech bubble on the home screen, speak, and release. Holding **BOOT** records while held without leaving the current screen or interrupting a care activity. Recording stops after 20 seconds. Do not hold BOOT while powering on: that is the ESP's download-mode shortcut. PWR retains its existing hardware function.
 
 **Options → Pet name** changes the saved name without changing identity or memories. Names use 1–15 letters/spaces/apostrophes/hyphens and start with a letter. Existing saves are migrated without resetting progress.
 
 **Options → Wi-Fi & voice connection** shows Wi-Fi connectivity, network name, IP, signal strength and gateway readiness. **Check now** sends a ping and reports a reply or timeout. This checks the gateway connection, not every upstream AI service. Existing Wi-Fi credentials are reused. There is no network picker/password editor in this version. Normal pet care works offline.
 
-Voice and sound effects share one speaker worker and the existing volume/mute controls. The microphone is gated by push-to-talk, never sent continuously. Reply text appears on the talk screen and the mouth animates during playback. Leaving that screen cancels the voice turn. A network interruption stops capture/playback and reconnects automatically.
+Voice and sound effects share one speaker worker and the existing volume/mute controls. The microphone is gated by push-to-talk, never sent continuously. Reply text appears in the home speech bubble and the mouth animates during playback. The room and care controls remain visible; there is no separate chat screen. A network interruption stops capture/playback and reconnects automatically.
 
 ## Connection and identity
 
@@ -49,3 +49,13 @@ Mac mini backups: `~/pet-voice-backup/{voice.py,session.py,butler.py,gateway.env
 Backend commits: HomeServer `a1ff4a2` (pushed on `codex/pet-voice-v1`), claude-esp `62c12b9`.
 
 Final device verification: firmware source `d89bc64`, flashed and reset successfully. A 20-second boot capture showed both codecs, display/touch and authenticated pet gateway ready, with no error/panic lines. Saved pet ID, stage and needs were retained. Firmware SHA-256: `698e35d4c5b806a8d10df1b0159046aa1e5d425153e0a22afec0fc02091e8db6`.
+
+## Inline voice / microphone fix
+
+A user test exposed a real device allocation failure that the earlier backend tests did not cover: `xStreamBufferCreate(96*1024)` allocates internal RAM, regardless of general PSRAM settings. The device had only 49,152 bytes in its largest free internal block. Allocation failed and the old early return silently skipped creating both audio tasks, despite successful codec initialization.
+
+Speech storage now explicitly uses PSRAM with `xStreamBufferCreateStatic`; its control structure stays internal. Buffer/task failures are logged and surfaced before listening. Boot confirms both tasks running. Audio start/end diagnostics include microphone frame counts. Recording intent is separate from network status, so a delayed listening acknowledgement cannot swallow release. Pet sessions report empty/quiet captures as retry messages instead of silently going idle.
+
+Voice now stays in the normal room, with a holdable speech bubble, listening level feedback, thinking/reply text, and mouth animation. BOOT also keeps other care screens in place. Host checks cover touch hold/release, BOOT press/release, the 20-second recording limit, and preserving an active bath. All 28 gateway tests pass, including empty microphone and silence feedback.
+
+Live device retest after the fix: one 1.20-second hold sent 38,400 PCM bytes; Groq transcribed “Hello.”, the dedicated pet endpoint returned HTTP 200, and Kokoro generated the reply. Device logs show microphone frame counts increasing from 3,078 to 3,138 during that recording.

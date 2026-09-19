@@ -41,3 +41,7 @@ void audio_voice_begin(void);
 void audio_voice_end(void);
 void audio_voice_stop(void);
 bool audio_voice_playing(void);
+
+bool audio_is_ready(void);
+unsigned audio_mic_frames(void);
+int audio_mic_level(void);
