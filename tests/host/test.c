@@ -20,7 +20,10 @@ bool power_is_charging(void) { return true; }
 void audio_play(sfx_id_t f) { (void)f; }
 void audio_set_muted(bool m) { (void)m; }
 static bool test_boot, test_auto=true;
-static unsigned test_remarks;
+static unsigned test_remarks, test_reactions;
+static pet_event_t test_event;
+void voice_note_event(pet_event_t e) {test_event=e;}
+bool voice_react(const Pet *p,const char *a) {(void)p;(void)a;test_reactions++;return true;}
 bool voice_auto_enabled(void) {return test_auto;}
 void voice_set_auto_enabled(bool b) {test_auto=b;}
 bool voice_remark(const Pet *p,const char *a) {(void)p;(void)a;test_remarks++;return true;}
@@ -182,6 +185,29 @@ int main(void)
         advance(1500);assert(pet_state_get()->evolution_progress==before+1);
     }
     assert(memcmp(held[0],held[1],sizeof held[0]));assert(memcmp(held[1],held[2],sizeof held[0]));
+    // Immediate feedback works offline/muted; spoken reactions are bounded and
+    // never queue behind manual speech. Snapshots still learn the latest action.
+    show(HOME);test_voice=VOICE_READY;test_auto=true;s_muted=false;audio_set_volume(100);
+    s_next_reaction=0;unsigned reactions=test_reactions;
+    tap(180,245);assert(test_event==PET_EVENT_CUDDLE && test_reactions==reactions+1);
+    tap(180,245);assert(test_reactions==reactions+1);
+    assert(strstr(s_reaction_text,"cuddles") || strstr(s_reaction_text,"leaves") || strstr(s_reaction_text,"tickles"));
+    show(FOOD);tap(180,350);advance(1300);
+    assert(test_event==PET_EVENT_TOAST && strstr(s_reaction_text,"toast"));
+    assert(test_reactions==reactions+1); // same 45-second speech cooldown
+    show(HOME);s_next_reaction=0;s_muted=true;tap(180,245);assert(test_reactions==reactions+1);
+    s_muted=false;audio_set_volume(0);tap(180,245);assert(test_reactions==reactions+1);
+    audio_set_volume(100);test_auto=false;tap(180,245);assert(test_reactions==reactions+1);
+    test_auto=true;test_voice=VOICE_OFFLINE;tap(180,245);assert(test_reactions==reactions+1);
+    test_voice=VOICE_LISTENING;tap(180,245);assert(test_reactions==reactions+1);
+    test_voice=VOICE_READY;s_next_reaction=0;tap(180,245);assert(test_reactions==reactions+2);
+    assert(!lv_obj_has_flag(lv_obj_get_parent(s_caption_label),LV_OBJ_FLAG_HIDDEN));
+    shot("reaction-cuddle");
+    show(SLEEP);unsigned nap_before=pet_state_get()->evolution_progress;
+    advance(600);tap(48,46);assert(test_event==PET_EVENT_CUDDLE);
+    assert(pet_state_get()->evolution_progress==nap_before); // no fake wake-up reaction
+    show(SLEEP);advance(6100);assert(test_event==PET_EVENT_NAP);shot("reaction-nap");
+    show(FOOD);tap(180,350);advance(1300);shot("reaction-toast");
     // Record production animation frames for visual review, including all foods.
     if(getenv("PET_CAPTURE_ANIMATIONS")) {
         saved=snapshot;saved.evolution_progress=10;pet_state_init();

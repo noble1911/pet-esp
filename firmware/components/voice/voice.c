@@ -27,11 +27,20 @@
 #define PET_USER_ID "pet-meadow-3cdc756e3104"
 #define PET_GATEWAY "ws://192.168.1.117:8770/ws"
 
-typedef struct { int kind; Pet pet; char activity[32]; size_t len; uint8_t pcm[640]; } Command;
-enum { START=1, END, CANCEL, PCM, CHECK, HELLO, REMARK };
+typedef struct { int kind; Pet pet; char activity[32]; pet_event_t event; unsigned event_age; size_t len; uint8_t pcm[640]; } Command;
+enum { START=1, END, CANCEL, PCM, CHECK, HELLO, REMARK, REACT };
 static QueueHandle_t s_commands;
 static esp_websocket_client_handle_t s_ws;
 static atomic_bool s_auto=true;
+static atomic_int s_recent_event=PET_EVENT_NONE;
+static atomic_uint s_event_at;
+static const char *event_names[]={"", "cuddle", "ate_apple", "ate_toast", "ate_cookie",
+    "caught_star", "finished_star_game", "popped_bubble", "finished_bath", "finished_nap"};
+void voice_note_event(pet_event_t event)
+{
+    if((unsigned)event>=sizeof(event_names)/sizeof(event_names[0]))return;
+    atomic_store(&s_event_at,xTaskGetTickCount());atomic_store(&s_recent_event,event);
+}
 static atomic_int s_state=VOICE_OFFLINE;
 static atomic_bool s_wifi, s_ready, s_capturing, s_overflow, s_requested;
 static portMUX_TYPE s_lock=portMUX_INITIALIZER_UNLOCKED;
@@ -62,14 +71,21 @@ static void add_pet(cJSON *o,const Command *c)
     cJSON_AddNumberToObject(j,"energy",p->energy);cJSON_AddNumberToObject(j,"cleanliness",p->hygiene);
     cJSON_AddNumberToObject(j,"stars",p->evolution_progress);cJSON_AddNumberToObject(j,"generation",p->generation);
     cJSON_AddNumberToObject(j,"friends_met",p->friends_met);cJSON_AddStringToObject(j,"activity",c->activity);
+    if(c->event!=PET_EVENT_NONE && c->event_age<=120) {
+        cJSON_AddStringToObject(j,"recent_event",event_names[c->event]);
+        cJSON_AddNumberToObject(j,"recent_event_age_seconds",c->event_age);
+    }
     cJSON *a=cJSON_AddArrayToObject(j,"genes");for(int i=0;i<8;i++) cJSON_AddItemToArray(a,cJSON_CreateNumber(p->genes[i]));
     a=cJSON_AddArrayToObject(j,"inventory");for(int i=0;i<16;i++) cJSON_AddItemToArray(a,cJSON_CreateNumber(p->inventory[i]));
 }
-static void enqueue(int kind,const Pet *pet,const char *activity)
+static bool enqueue(int kind,const Pet *pet,const char *activity)
 {
-    if(!s_commands) return;
+    if(!s_commands) return false;
     Command c={.kind=kind};if(pet)c.pet=*pet;if(activity)strlcpy(c.activity,activity,sizeof(c.activity));
-    if(xQueueSend(s_commands,&c,0)!=pdTRUE) atomic_store(&s_overflow,true);
+    c.event=(pet_event_t)atomic_load(&s_recent_event);
+    c.event_age=(unsigned)((xTaskGetTickCount()-atomic_load(&s_event_at))/configTICK_RATE_HZ);
+    if(xQueueSend(s_commands,&c,0)!=pdTRUE) {atomic_store(&s_overflow,true);return false;}
+    return true;
 }
 void voice_start_talk(const Pet *pet,const char *activity)
 {
@@ -94,12 +110,16 @@ void voice_set_auto_enabled(bool enabled)
         nvs_set_u8(h,"auto",enabled);nvs_commit(h);nvs_close(h);
     }
 }
-bool voice_remark(const Pet *pet,const char *activity)
+static bool auto_turn(int kind,const Pet *pet,const char *activity)
 {
     if(!voice_auto_enabled() || !audio_is_ready() || !atomic_load(&s_ready) ||
        atomic_load(&s_requested) || voice_get_state()!=VOICE_READY || audio_voice_playing())return false;
-    caption_set("");atomic_store(&s_state,VOICE_THINKING);enqueue(REMARK,pet,activity);return true;
+    caption_set("");atomic_store(&s_state,VOICE_THINKING);
+    if(!enqueue(kind,pet,activity)) {atomic_store(&s_state,VOICE_READY);return false;}
+    return true;
 }
+bool voice_remark(const Pet *pet,const char *activity) {return auto_turn(REMARK,pet,activity);}
+bool voice_react(const Pet *pet,const char *activity) {return auto_turn(REACT,pet,activity);}
 static void mic(const uint8_t *p,size_t n)
 {
     if(!atomic_load(&s_capturing) || n>640) return;
@@ -203,14 +223,14 @@ static void worker(void *arg)
         } else if(c.kind==END) {
             audio_set_capture(false);atomic_store(&s_capturing,false);
             o=message("audio_end");add_pet(o,&c);send_json(o);turn_started=now;ESP_LOGI("voice","capture ended; mic frames=%u peak=%d",audio_mic_frames(),audio_mic_level());
-        } else if(c.kind==REMARK) {
+        } else if(c.kind==REMARK || c.kind==REACT) {
             // A manual press takes priority, even if it races this queued remark.
             if(atomic_load(&s_requested))continue;
             if(!voice_auto_enabled()) {atomic_store(&s_state,VOICE_READY);continue;}
             o=message("text");add_pet(o,&c);cJSON_AddBoolToObject(o,"proactive",true);
-            cJSON_AddStringToObject(o,"text","A quiet moment in the pet's room.");
+            cJSON_AddStringToObject(o,"text",c.kind==REACT?"A device care event just happened. React briefly to the recent_event in the snapshot; nobody has spoken.":"A quiet moment in the pet's room.");
             if(!send_json(o)) {atomic_store(&s_state,VOICE_READY);continue;}
-            turn_started=now;ESP_LOGI("voice","spontaneous pet remark requested");
+            turn_started=now;ESP_LOGI("voice","automatic pet %s requested",c.kind==REACT?"reaction":"remark");
         } else if(c.kind==PCM && atomic_load(&s_ready)) {
             if(esp_websocket_client_send_bin(s_ws,(char*)c.pcm,c.len,pdMS_TO_TICKS(300))!=(int)c.len) atomic_store(&s_overflow,true);
         } else if(c.kind==CANCEL) { send_json(message("cancel"));atomic_store(&s_state,atomic_load(&s_ready)?VOICE_READY:VOICE_OFFLINE); }

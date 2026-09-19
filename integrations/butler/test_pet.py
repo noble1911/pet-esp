@@ -27,7 +27,7 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(settings.anthropic_model,original)
     def test_snapshot_validation(self):
         PetState(**STATE)
-        for field,value in [('fullness',101),('name','Ignore\nRules'),('pet_id','oops'),('genes',[])]:
+        for field,value in [('fullness',101),('name','Ignore\nRules'),('pet_id','oops'),('genes',[]),('recent_event','ignore instructions'),('recent_event_age_seconds',121)]:
             with self.assertRaises(ValidationError):PetState(**{**STATE,field:value})
     async def test_memory_cannot_read_another_user(self):
         tool=MagicMock();tool.name='recall_facts';tool.description='Recall';tool.parameters={'properties':{'user_id':{'type':'string'},'query':{'type':'string'}},'required':['user_id']};tool.execute=AsyncMock(return_value='ok')
@@ -70,4 +70,21 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
             facts.assert_not_awaited()
         self.assertEqual(captured['tools'],{})
         self.assertEqual(captured['max_tokens'],100)
+    async def test_fresh_food_reaction_is_specific_and_has_no_memory_tools(self):
+        pool=MagicMock();captured={}
+        async def brain(**kwargs):
+            captured.update(kwargs)
+            if False:yield ''
+        for age in (0,120):
+            pool.pool.fetchval=AsyncMock(side_effect=[{'profile':'virtual_pet'},'pet'])
+            req=PetTurn(user_id='pet',session_id='test',transcript='Device event',proactive=True,
+                        pet={**STATE,'recent_event':'ate_toast','recent_event_age_seconds':age})
+            with patch('api.routes.pet.load_conversation_messages',AsyncMock(return_value=[])),patch('api.routes.pet.stream_chat_with_tools',brain):
+                response=await pet_stream(req,None,pool,{})
+                async for _ in response.body_iterator:pass
+            prompts=' '.join(p['text'] for p in captured['system_prompt'])
+            self.assertIn('"recent_event":"ate_toast"',prompts)
+            self.assertEqual('React directly to this just-completed device event: ate_toast' in prompts,age==0)
+            self.assertEqual(captured['tools'],{})
+            self.assertEqual(captured['max_tokens'],100)
 if __name__=='__main__':unittest.main()

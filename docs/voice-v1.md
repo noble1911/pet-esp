@@ -84,3 +84,26 @@ Gateway image now includes ffmpeg; processing is asynchronous, times out after
 30 seconds, and terminates its subprocess when a voice turn is cancelled.
 Pre-change deployment files are preserved on the Mac mini in
 `~/pet-voice-backup/pre-brighter-sprout/`.
+
+## Care reactions
+
+Cuddles and completed snacks, star games, baths and naps now get immediate,
+short captions; caught stars and popped bubbles also trigger local feedback.
+The selected snack is named correctly. Cancelled care never triggers completion
+feedback. Short-lived device event context accompanies the next voice snapshot
+so Sprout can acknowledge what just happened, even when it was quiet at the time.
+
+Optional automatic speech uses existing Little chats, mute and volume controls.
+Reactions are allowed at Home or the care celebration screen, at most once every
+45 seconds, with a ready voice connection and no active conversation. Manual
+speech takes priority. No stale reactions are queued for later. A spoken reaction
+reschedules the next idle remark for 4–7 minutes later. Local captions work
+without Wi-Fi and linger for 3.5 seconds.
+
+Recent-event context expires after 120 seconds; events no older than 15 seconds
+can ground a spontaneous reaction in at most 12 words. The bounded event list
+includes the exact food and completed activity. These are device facts rather
+than a transcript: no fake child messages or event-derived preferences are
+written to memory. Pet-only Haiku and Brighter Sprout remain in use.
+
+Preview captures and test notes: `docs/previews/reactions-v1/`.

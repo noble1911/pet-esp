@@ -30,7 +30,8 @@ static lv_obj_t *s_voice_status, *s_caption_label, *s_connection, *s_name_input,
 static bool s_talking, s_boot_down, s_boot_raw;
 static uint32_t s_talk_started, s_boot_changed, s_connection_tick, s_voice_until;
 static char s_last_caption[512];
-static uint32_t s_next_remark, s_last_manual_talk;
+static uint32_t s_next_remark, s_last_manual_talk, s_next_reaction, s_reaction_until;
+static char s_reaction_text[96];
 static pixel_pet_art_t s_pet_art;
 static pixel_face_t s_face;
 static pixel_food_t s_food;
@@ -41,6 +42,21 @@ static int s_pet_x, s_pet_y;
 static const uint32_t colors[4] = {0xf5b164, 0xed99b4, 0x9aafe7, 0x79c8b7};
 static void show(View view);
 static void refresh(void);
+static const char *activity(void);
+static void reaction(pet_event_t event,const char *text,bool speak)
+{
+    uint32_t now=lv_tick_get();
+    voice_note_event(event);
+    snprintf(s_reaction_text,sizeof(s_reaction_text),"%s",text);s_reaction_until=now+3500;
+    if(s_hint && s_view!=HOME && s_view!=PARTY)lv_label_set_text(s_hint,text);
+    if(!speak || (s_view!=HOME && s_view!=PARTY) || s_talking || s_muted ||
+       audio_get_volume()==0 || !voice_auto_enabled() || audio_voice_playing() ||
+       voice_get_state()!=VOICE_READY || (s_next_reaction && (int32_t)(s_next_reaction-now)>0))return;
+    if(voice_react(pet_state_get(),activity())) {
+        s_next_reaction=now+45000;
+        s_next_remark=now+240000+esp_random()%180001;
+    }
+}
 
 static lv_obj_t *shape(lv_obj_t *p, int x, int y, int w, int h, uint32_t c, int r)
 {
@@ -120,8 +136,10 @@ static void room(bool night)
 static void meadow(void) { room(false); }
 static void pet_tap(lv_event_t *e)
 {
-    (void)e; s_hop_until=lv_tick_get()+600;
-    if(s_hint) lv_label_set_text(s_hint,"I love you!");
+    (void)e;if(s_view!=HOME)return;
+    s_hop_until=lv_tick_get()+600;
+    static unsigned cuddle;
+    reaction(PET_EVENT_CUDDLE,(const char*[]){"That tickles!","Cozy cuddles!","My leaves are wiggling!"}[cuddle++%3],true);
     audio_play(SFX_FEED);
 }
 static void make_pet(int x, int y)
@@ -159,6 +177,11 @@ static void finish(int action)
     if(action==3) pet_state_clean();
     audio_play(SFX_HAPPY);
     show(PARTY);
+    if(action==0)reaction((pet_event_t)(PET_EVENT_APPLE+s_food),
+        (const char*[]){"Crunch! Juicy apple!","Mmm, warm buttery toast!","Cookie crumbs on my cheeks!"}[s_food],true);
+    if(action==1)reaction(PET_EVENT_PLAY,"Five twinkly treasures!",true);
+    if(action==2)reaction(PET_EVENT_NAP,"Stretch! What a lovely nap!",true);
+    if(action==3)reaction(PET_EVENT_BATH,"Sparkly clean, from toes to leaves!",true);
 }
 static void food_cb(lv_event_t *e)
 {
@@ -180,6 +203,8 @@ static void catch_cb(lv_event_t *e)
 {
     (void)e; s_hits++; update_progress(); audio_play(SFX_FEED);
     if(s_hits==5) { finish(1); return; }
+    s_hop_until=lv_tick_get()+450;
+    reaction(PET_EVENT_STAR,(const char*[]){"Got one!","A twinkly treasure!","Catch that sparkle!","One more star!"}[(s_hits-1)%4],false);
     place_target();
 }
 static void bubble_cb(lv_event_t *e)
@@ -189,6 +214,7 @@ static void bubble_cb(lv_event_t *e)
     lv_obj_add_state(o,LV_STATE_DISABLED); lv_obj_add_flag(o,LV_OBJ_FLAG_HIDDEN);
     s_hits++; update_progress(); s_hop_until=lv_tick_get()+400; audio_play(SFX_EMOTE);
     if(s_hits==5) finish(3);
+    else reaction(PET_EVENT_BUBBLE,s_hits%2?"Pop! A tiny bubble!":"Splish, splash!",false);
 }
 static void mute_cb(lv_event_t *e)
 {
@@ -210,6 +236,7 @@ static const char *activity(void)
 static void talk_begin(void)
 {
     if(s_talking) return;
+    s_reaction_until=0;s_next_reaction=lv_tick_get()+45000;
     s_last_manual_talk=lv_tick_get();s_next_remark=s_last_manual_talk+240000+esp_random()%180001;
     s_talking=true;s_talk_started=lv_tick_get();s_voice_until=0;
     voice_start_talk(pet_state_get(),activity());
@@ -293,7 +320,7 @@ static void show(View view)
     for(int i=0;i<4;i++) s_bars[i]=NULL;
     for(int i=0;i<5;i++) s_dots[i]=NULL;
     if(s_root) lv_obj_delete(s_root);
-    s_view=view; s_started=lv_tick_get(); s_hits=0; s_eating=false; s_hop_until=0;
+    s_view=view; s_started=lv_tick_get(); s_hits=0; s_eating=false; s_hop_until=0;s_reaction_until=0;
     s_root=shape(lv_screen_active(),0,0,368,448,CREAM,0);
     if(view==HOME) { make_home(); return; }
     if(view==FOOD) {
@@ -308,7 +335,7 @@ static void show(View view)
     } else if(view==CATCH) {
         room(false); header("Catch the stars"); progress(); make_pet(82,134);
         lv_obj_remove_flag(s_pet,LV_OBJ_FLAG_CLICKABLE);
-        label(s_root,"Tap each golden star",32,405,304,false);
+        s_hint=label(s_root,"Tap each golden star",32,405,304,false);
         s_target=button(s_root,40,150,96,96,0xffedb9,catch_cb,0);
         lv_obj_set_style_bg_opa(s_target,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(s_target,0,0);
         star(s_target,28,26,0xe8aa35); place_target();
@@ -318,7 +345,7 @@ static void show(View view)
         room(false); header("Bubble bath"); progress(); make_pet(82,126);
         // The bathtub and foam are part of the illustrated pose.
 
-        label(s_root,"Pop all five bubbles",32,397,304,false);
+        s_hint=label(s_root,"Pop all five bubbles",32,397,304,false);
         static const int xy[5][2]={{26,116},{144,100},{264,116},{35,225},{259,229}};
         for(int i=0;i<5;i++) {
             lv_obj_t *b=button(s_root,xy[i][0],xy[i][1],70,70,0xc2e8ef,bubble_cb,i);
@@ -336,6 +363,7 @@ static void show(View view)
         lv_obj_t *dream=button(s_root,268,149,62,50,CREAM,NULL,0);
         lv_obj_remove_flag(dream,LV_OBJ_FLAG_CLICKABLE);
         label(dream,"z Z",0,16,62,true);
+        s_hint=label(s_root,"My eyes feel sleepy...",24,397,320,false);
     } else if(view==PARTY) {
         unsigned earned=pet_state_get()->evolution_progress;
         label(s_root,earned<=30 && earned%5==0?"New sticker!":"Lovely caring!",24,40,320,true);
@@ -349,6 +377,11 @@ static void show(View view)
             lv_obj_t *gift=button(s_root,270,90,70,70,0xffecd1,nav_cb,ALBUM);
             icon(gift,(int)(n/5)-1,7,8);
         }
+        lv_obj_t *caption=button(s_root,24,77,320,64,CREAM,NULL,0);
+        lv_obj_remove_flag(caption,LV_OBJ_FLAG_CLICKABLE);
+        s_caption_label=label(caption,"",8,8,300,false);lv_obj_set_height(s_caption_label,48);
+        lv_label_set_long_mode(s_caption_label,LV_LABEL_LONG_SCROLL);lv_obj_add_flag(caption,LV_OBJ_FLAG_HIDDEN);
+        s_voice_status=label(s_root,"",24,356,320,false);
         s_hop_until=lv_tick_get()+1800;
     } else if(view==ALBUM) {
         header("My stickers"); unsigned n=pet_state_get()->evolution_progress;
@@ -437,7 +470,13 @@ static void frame(lv_timer_t *t)
        !s_muted && audio_get_volume()>0 && voice_auto_enabled() &&
        (inactivity<600000 || now-s_last_manual_talk<600000) && vs==VOICE_READY && !audio_voice_playing()) {
         s_next_remark=now+240000+esp_random()%180001;
-        voice_remark(pet_state_get(),activity());
+        if(voice_remark(pet_state_get(),activity()))s_next_reaction=now+45000;
+    }
+    bool local_reaction=(int32_t)(s_reaction_until-now)>0;
+    if(s_reaction_until && !local_reaction) {
+        s_reaction_until=0;
+        if(s_hint && s_view==CATCH)lv_label_set_text(s_hint,"Tap each golden star");
+        if(s_hint && s_view==BATH)lv_label_set_text(s_hint,"Pop all five bubbles");
     }
     if(s_voice_status) {
         char caption[512];voice_caption(caption,sizeof(caption));
@@ -445,7 +484,7 @@ static void frame(lv_timer_t *t)
         bool busy=vs==VOICE_LISTENING || vs==VOICE_THINKING || speaking;
         if(strcmp(s_last_caption,caption)) { snprintf(s_last_caption,sizeof(s_last_caption),"%s",caption);s_voice_until=now+12000; }
         if(busy && caption[0])s_voice_until=now+12000;
-        bool expanded=busy || (caption[0] && (int32_t)(s_voice_until-now)>0);
+        bool expanded=local_reaction || busy || (caption[0] && (int32_t)(s_voice_until-now)>0);
         if(expanded)lv_obj_remove_flag(lv_obj_get_parent(s_caption_label),LV_OBJ_FLAG_HIDDEN);
         else lv_obj_add_flag(lv_obj_get_parent(s_caption_label),LV_OBJ_FLAG_HIDDEN);
         if(vs==VOICE_LISTENING) {
@@ -453,13 +492,16 @@ static void frame(lv_timer_t *t)
             lv_label_set_text(s_caption_label,level>300?"I'm listening...\nI can hear your voice!":"I'm listening...\nSpeak close to me");
             lv_label_set_text(s_voice_status,"Let go when you're done");
         } else if(vs==VOICE_THINKING) {
-            lv_label_set_text(s_caption_label,"One little moment...");
+            lv_label_set_text(s_caption_label,local_reaction?s_reaction_text:"One little moment...");
             lv_label_set_text(s_voice_status,"Thinking...");
+        } else if(local_reaction && !speaking) {
+            lv_label_set_text(s_caption_label,s_reaction_text);
+            lv_label_set_text(s_voice_status,s_view==HOME?"Hold here or BOOT to talk":"Hold BOOT to talk");
         } else if(caption[0] && (int32_t)(s_voice_until-now)>0) {
             if(strcmp(lv_label_get_text(s_caption_label),caption))lv_label_set_text(s_caption_label,caption);
-            lv_label_set_text(s_voice_status,speaking?"Chatting with you":"Hold here or BOOT to reply");
+            lv_label_set_text(s_voice_status,speaking?"Chatting with you":s_view==HOME?"Hold here or BOOT to reply":"Hold BOOT to reply");
         } else {
-            char greeting[80];snprintf(greeting,sizeof(greeting),"Hold to talk to %s",pet_state_get()->name);
+            char greeting[80];snprintf(greeting,sizeof(greeting),s_view==HOME?"Hold to talk to %s":"Hold BOOT to talk to %s",pet_state_get()->name);
             if(strcmp(lv_label_get_text(s_voice_status),greeting))lv_label_set_text(s_voice_status,greeting);
         }
     }
