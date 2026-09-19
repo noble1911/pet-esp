@@ -1,24 +1,7 @@
-// pet-esp firmware entry point.
-//
-// Build order (architecture §10) — each step ends with a working artifact:
-//   1. Hardware smoke test (factory demo — not this firmware)
-//   2. LVGL hello world          -> renderer            DONE
-//   3. Pet exists (placeholder)  -> renderer + ui       DONE
-//   4. Pet ticks + NVS           -> pet_state           DONE
-//   5. Real renderer             -> renderer
-//   6. UI loop                   -> ui
-//   7. Evolution                 -> pet_state
-//   8. ESP-NOW discovery         -> radio
-//   9. Shared canvas             -> radio + renderer
-//  10. Emotes                    -> radio + ui
-//  11. Items in shared space     -> radio + ui
-//  12. Mini-game + dance         -> radio + ui + audio
-//  13. Breeding                  -> pet_state + radio
-
+// Little Meadow boot: NVS, display/touch, PMIC, audio, then the UI.
 #include <time.h>
 
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "nvs_flash.h"
 
 #include "pet_state.h"
@@ -29,19 +12,6 @@
 #include "power.h"
 
 static const char *TAG = "pet";
-
-// Architecture §4.2 calls for a slow (~60 s) tick. While step 4 is dev-
-// tuned to faster decay for visibility, keeping the polling interval
-// short means the overlay stays responsive to care actions when those
-// land at step 6.
-#define TICK_INTERVAL_US (10ULL * 1000 * 1000)
-
-static void tick_cb(void *arg)
-{
-    (void)arg;
-    pet_state_tick((uint32_t)time(NULL));
-    ui_refresh_stats();
-}
 
 void app_main(void)
 {
@@ -72,14 +42,6 @@ void app_main(void)
     pet_state_tick((uint32_t)time(NULL));
     ui_refresh_stats();
 
-    const esp_timer_create_args_t args = {
-        .callback = tick_cb,
-        .name     = "pet_tick",
-    };
-    esp_timer_handle_t timer;
-    ESP_ERROR_CHECK(esp_timer_create(&args, &timer));
-    ESP_ERROR_CHECK(esp_timer_start_periodic(timer, TICK_INTERVAL_US));
-
-    ESP_LOGI(TAG, "init complete; tick every %llu s",
-             (unsigned long long)(TICK_INTERVAL_US / 1000000ULL));
+    // The LVGL timer owns needs and care mutations, avoiding races with NVS saves.
+    ESP_LOGI(TAG, "Little Meadow ready; touch activities and active-time care enabled");
 }

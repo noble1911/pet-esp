@@ -11,6 +11,9 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_io_expander.h"
 #include "esp_heap_caps.h"
 #include "esp_littlefs.h"
 #include "esp_log.h"
@@ -312,6 +315,18 @@ static void free_sprites(void)
 void renderer_init(void)
 {
     ESP_ERROR_CHECK(bsp_i2c_init());
+    // The BSP leaves reset pins as GPIO_NUM_NC. Explicitly reset the
+    // panel/touch through TCA9554, as in Waveshare's original-board demo.
+    // Without this, a warm boot inherits the previous app's controller state.
+    esp_io_expander_handle_t io = bsp_io_expander_init();
+    assert(io);
+    const uint32_t reset_pins = IO_EXPANDER_PIN_NUM_0 |
+                                IO_EXPANDER_PIN_NUM_1 | IO_EXPANDER_PIN_NUM_2;
+    ESP_ERROR_CHECK(esp_io_expander_set_dir(io, reset_pins, IO_EXPANDER_OUTPUT));
+    ESP_ERROR_CHECK(esp_io_expander_set_level(io, reset_pins, 0));
+    vTaskDelay(pdMS_TO_TICKS(20));
+    ESP_ERROR_CHECK(esp_io_expander_set_level(io, reset_pins, 1));
+    vTaskDelay(pdMS_TO_TICKS(200));
     s_disp = bsp_display_start();
     if (s_disp == NULL) {
         ESP_LOGE(TAG, "bsp_display_start failed");

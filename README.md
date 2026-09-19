@@ -1,61 +1,53 @@
-# pet-esp
+# Little Meadow
 
-A Tamagotchi-Uni-inspired virtual pet for the **Waveshare ESP32-S3-Touch-AMOLED-1.8**.
-Two devices can meet over ESP-NOW and share a play space across their screens.
+A gentle touchscreen pet for the **Waveshare ESP32-S3-Touch-AMOLED-1.8 (original SH8601 / FT3168 board)**, built with ESP-IDF 5.3.5 and LVGL 9.
 
-> The design source of truth is **[docs/architecture.md](docs/architecture.md)**.
-> Implementation follows those decisions unless the doc is explicitly revised.
+![Screens](docs/previews/little-meadow/overview.png)
 
-## Layout
+## Playing
 
-```
-firmware/        ESP-IDF firmware (the device)
-  main/main.c    Entry point (app_main)
-  components/    pet_state, renderer, radio, ui, audio
-  assets/        Built .bin sprites (gitignored — produced by sprite_forge)
-  partitions.csv Custom partition layout
-  sdkconfig.defaults  Checked-in defaults (per-build sdkconfig is gitignored)
-sprite_forge/    Laptop-side Python tool: PNG art -> .bin sprite sheets
-docs/            Architecture and sub-specs
-backup/          Factory firmware image (restore reference)
-```
+- **Food:** pick an illustrated snack; your pet eats it.
+- **Play:** tap five golden stars. Each waits for you; there is no timer or losing.
+- **Sleep:** a six-second nap restores energy. Back cancels the nap.
+- **Bath:** pop five big bubbles.
+- Tap your pet for a cuddle and a little hop.
+- Each completed activity earns one saved star. Collect six stickers, one every five stars, via the star button at home. Growth adds a tuft, flower, scarf and golden badge at 10, 30, 60 and 100 stars.
+- The matching coloured bars show food, happiness, energy and cleanliness. They also open their activities.
+- The cog opens battery information and the sound toggle. There is no destructive reset button in the child-facing UI.
 
-## Status
+Needs decay gently while powered on (one point per 3 / 4 / 5 / 6 minutes), stop at 20, and pause while powered off. There is no death, lost progress or punishment for leaving the toy. Each care action restores 30 points, capped at 100.
 
-Project skeleton only. See the **build order** in
-[docs/architecture.md §10](docs/architecture.md) — each step ends with a
-working, demoable artifact, and steps are done in order. Component sources
-are stubs marked with `TODO(build-order:N)` against that list.
+## Build and flash on this Mac
 
-## Getting started
-
-Firmware (ESP-IDF **v5.3.x LTS** via `idf.py`, e.g. through the VS Code ESP-IDF extension — see architecture.md §2 for why v6 is currently not supported):
-
-```
-cd firmware
-idf.py set-target esp32s3      # first time only
-idf.py build                   # compile
-idf.py -p <PORT> flash         # upload (PORT e.g. /dev/cu.usbmodem*)
-idf.py -p <PORT> monitor       # serial log
-idf.py -p <PORT> flash monitor # all-in-one
+```sh
+./scripts/device.sh build
+./scripts/device.sh -p /dev/cu.usbmodem101 flash
+./scripts/device.sh -p /dev/cu.usbmodem101 monitor
 ```
 
-A factory firmware backup for the unit we're developing against lives in
-[backup/](backup/) — restore instructions are at the top of that folder.
+The helper selects the Python interpreter matching the existing build cache. On another machine, install ESP-IDF 5.3.x, source `export.sh`, then use `idf.py` from `firmware/`. The BSP and LVGL resolve through the component manager. The current UI draws native vector shapes; it does not need generated sprite art. Legacy sprite tooling and the assets partition remain available for future work.
 
-Sprite forge (laptop, Python 3.10+):
+## Test and render without the device
 
-```
-cd sprite_forge
-pip install -r requirements.txt
-python build.py          # build all .bin assets into ../firmware/assets
-python preview.py        # interactive preview window
-python random_grid.py    # save a 4x4 PNG of random pets
+```sh
+cmake -S tests/host -B /tmp/pet-host-build
+cmake --build /tmp/pet-host-build -j8
+(cd docs/previews/little-meadow && /tmp/pet-host-build/pet_test)
+python3 tests/host/render_previews.py
 ```
 
-## Sub-specs
+Uses the managed LVGL source installed by the firmware build, with mocked NVS/audio/power and actual LVGL pointer input. Tests cover decay boundaries, need floors, capped restoration, save/reload, all growth thresholds, activity completion, duplicate taps, cancelled feeding/naps, mute and repeated navigation. The PNG previews are renders of the actual C UI, not separate mockups. Pillow is needed only to convert the test's PPMs to PNG.
 
-- [docs/design.md](docs/design.md) — visual & UX direction; polish-gate authority
-- [docs/gene_spec.md](docs/gene_spec.md) — 8-byte gene vector + breeding
-- [docs/radio_protocol.md](docs/radio_protocol.md) — ESP-NOW beacon / handshake / sync
-- [docs/sprite_format.md](docs/sprite_format.md) — on-device `.bin` sprite format
+## Implementation
+
+- `firmware/components/ui/ui.c`: screens, vector illustration, animation and activities; one LVGL timer owns the pet's periodic updates.
+- `firmware/components/pet_state/`: backwards-compatible NVS pet blob. Previously unused `evolution_progress` stores care stars; no struct layout change.
+- `firmware/components/audio/`: quiet, asynchronous codec chirps; mute is session-local.
+- `firmware/components/renderer/`: BSP display/touch initialization and retained legacy sprite renderer.
+- `docs/little-meadow.md`: design decisions, validation and limitations.
+
+ESP-NOW multiplayer, breeding, IMU gestures and RTC synchronization remain unimplemented; the finished play loop is single-device.
+
+## Recovery
+
+The firmware that was on the connected device before this update is backed up locally at `backup/2026-09-19/pre-pet-flash.bin` (16 MB). See that folder's README for restoration. Flashing the pet does not erase NVS; valid existing pet identity, genes and progress are retained.

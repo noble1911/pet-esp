@@ -1,5 +1,7 @@
 # Virtual Pet Project — Architecture
 
+> **Current single-device design:** [Little Meadow (September 2026)](little-meadow.md) supersedes the original UI, artwork, growth and decay choices below. Older sections remain as historical design and future multiplayer notes.
+
 A Tamagotchi-Uni-inspired virtual pet running on ESP32-S3, with two devices able to meet wirelessly and share a play space across their screens.
 
 This document is the design source of truth. Implementation should follow these decisions unless explicitly revised here.

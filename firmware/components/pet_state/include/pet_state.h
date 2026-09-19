@@ -55,7 +55,7 @@ typedef struct {
 
     // Life stage
     uint8_t  stage;              // pet_stage_t
-    uint32_t evolution_progress;
+    uint32_t evolution_progress; // completed care stars (Little Meadow)
 
     // Needs (0-100, decay over time)
     uint8_t  hunger;
@@ -125,7 +125,7 @@ uint8_t pet_state_mood_emote(void);
 
 // Evolution (architecture §4.3) -----------------------------------------
 
-// TODO(build-order:7): time/care-based stage transition with branching.
+// Care-star growth at 10, 30, 60 and 100 completed activities.
 void pet_state_check_evolution(void);
 
 // Breeding (architecture §6.2, docs/gene_spec.md) -----------------------

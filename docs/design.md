@@ -1,5 +1,7 @@
 # Visual & UX design
 
+> **Current single-device design:** [Little Meadow (September 2026)](little-meadow.md) supersedes the original UI, artwork, growth and decay choices below. Older sections remain as historical design and future multiplayer notes.
+
 Expands [architecture.md §5 (rendering)](architecture.md) and the §10
 "polish gate" with the **visual identity** the project is reaching for.
 Where the architecture decides *what works*, this doc decides *what it

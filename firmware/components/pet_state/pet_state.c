@@ -15,13 +15,11 @@ static const char *TAG = "pet_state";
 #define NVS_NAMESPACE "pet"
 #define NVS_KEY       "blob"
 
-// Dev tuning — visible decay in tens of seconds. Hunger decays fastest so
-// food is the most common care need; the others trail. Architecture §11
-// flags exact per-need rates as an open question.
-#define HUNGER_DECAY_PERIOD_SEC    10
-#define HAPPINESS_DECAY_PERIOD_SEC 15
-#define ENERGY_DECAY_PERIOD_SEC    20
-#define HYGIENE_DECAY_PERIOD_SEC   25
+// Gentle active-time needs. Offline time is paused; needs never fall below 20.
+#define HUNGER_DECAY_PERIOD_SEC    180
+#define HAPPINESS_DECAY_PERIOD_SEC 240
+#define ENERGY_DECAY_PERIOD_SEC    300
+#define HYGIENE_DECAY_PERIOD_SEC   360
 
 // Care actions add this much to their target need, clamped to 100.
 #define CARE_RESTORE_AMOUNT 30
@@ -72,6 +70,13 @@ void pet_state_init(void)
 {
     if (pet_state_load(&s_pet)) {
         s_have_pet = true;
+        // Accept old saves without retaining exhausted development-mode needs.
+        uint8_t *needs[] = {&s_pet.hunger, &s_pet.happiness, &s_pet.energy, &s_pet.hygiene};
+        for (int i=0; i<4; i++) {
+            if (*needs[i] < 20) *needs[i] = 20;
+            if (*needs[i] > 100) *needs[i] = 100;
+        }
+        pet_state_check_evolution();
         // System clock may be unset across reboot (no NTP / RTC sync yet);
         // resetting last_tick avoids a billion-second elapsed jump that
         // would instantly zero every need.
@@ -127,6 +132,7 @@ bool pet_state_save(const Pet *pet)
     esp_err_t err = nvs_set_blob(h, NVS_KEY, pet, sizeof(*pet));
     if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
+    if (err != ESP_OK) ESP_LOGW(TAG, "could not persist pet state: %d", (int)err);
     return err == ESP_OK;
 }
 
@@ -224,11 +230,11 @@ static bool decay_one(uint8_t *value, uint32_t *acc,
                       uint32_t elapsed, uint32_t period)
 {
     if (period == 0) return false;
-    *acc += elapsed;
+    *acc += elapsed > 3600 ? 3600 : elapsed;
     uint32_t d = *acc / period;
     if (d == 0) return false;
     *acc -= d * period;
-    *value = (d >= *value) ? 0 : (uint8_t)(*value - d);
+    *value = (*value <= 20 || d >= (uint32_t)(*value - 20)) ? 20 : (uint8_t)(*value - d);
     return true;
 }
 
@@ -259,6 +265,8 @@ static void care_restore(uint8_t *value, uint8_t boost)
     if (!s_have_pet) return;
     uint16_t v = (uint16_t)*value + boost;
     *value = (v > 100) ? 100 : (uint8_t)v;
+    if (s_pet.evolution_progress < UINT32_MAX) s_pet.evolution_progress++;
+    pet_state_check_evolution();
     pet_state_save(&s_pet);
 }
 
@@ -269,7 +277,10 @@ void pet_state_clean(void) { care_restore(&s_pet.hygiene,   CARE_RESTORE_AMOUNT)
 
 void pet_state_check_evolution(void)
 {
-    // TODO(build-order:7): time + care thresholds with branching forms.
+    if (!s_have_pet) return;
+    uint32_t n = s_pet.evolution_progress;
+    s_pet.stage = n >= 100 ? PET_STAGE_ELDER : n >= 60 ? PET_STAGE_ADULT :
+                  n >= 30 ? PET_STAGE_TEEN : n >= 10 ? PET_STAGE_CHILD : PET_STAGE_BABY;
 }
 
 void pet_breed(const Pet *a, const Pet *b,

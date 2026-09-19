@@ -3,6 +3,7 @@
 // (architecture §11) — keep this surface minimal.
 
 #pragma once
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,6 +22,7 @@ void audio_init(void);
 
 // TODO(build-order:12): non-blocking one-shot cue.
 void audio_play(sfx_id_t sfx);
+void audio_set_muted(bool muted);
 
 #ifdef __cplusplus
 }

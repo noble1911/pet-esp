@@ -1,0 +1,104 @@
+#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include "nvs.h"
+#include "../../firmware/components/ui/ui.c"
+static Pet saved;
+static bool has_save;
+uint32_t esp_random(void) { static uint32_t seed=15; seed=seed*1664525+1013904223; return seed; }
+int nvs_open(const char *n,int mode,int *h) { (void)n;(void)mode;*h=1;return 0; }
+int nvs_get_blob(int h,const char *k,void *out,size_t *n) { (void)h;(void)k;if(!has_save)return 1;memcpy(out,&saved,sizeof saved);*n=sizeof saved;return 0; }
+int nvs_set_blob(int h,const char *k,const void *p,size_t n) { (void)h;(void)k;assert(n==sizeof saved);memcpy(&saved,p,n);has_save=true;return 0; }
+int nvs_commit(int h) { (void)h;return 0; }
+void nvs_close(int h) { (void)h; }
+int nvs_erase_key(int h,const char *k) { (void)h;(void)k;has_save=false;return 0; }
+bool renderer_lock(uint32_t ms) { (void)ms;return true; }
+void renderer_unlock(void) {}
+int power_battery_percent(void) { return 85; }
+bool power_is_charging(void) { return true; }
+void audio_play(sfx_id_t f) { (void)f; }
+void audio_set_muted(bool m) { (void)m; }
+static uint32_t pixels[368*448];
+static int tx,ty; static bool pressed;
+static void read_touch(lv_indev_t *i,lv_indev_data_t *d) { (void)i; d->point.x=tx;d->point.y=ty;d->state=pressed?LV_INDEV_STATE_PRESSED:LV_INDEV_STATE_RELEASED; }
+static void flush(lv_display_t *d,const lv_area_t *a,uint8_t *p) { (void)a;(void)p;lv_display_flush_ready(d); }
+static void advance(unsigned ms) { for(unsigned n=0;n<ms;n+=20) { lv_tick_inc(20);lv_timer_handler(); } }
+static void tap(int x,int y) { tx=x;ty=y;pressed=true;advance(60);pressed=false;advance(60); }
+static void shot(const char *name) {
+    advance(60); lv_refr_now(NULL);
+    char path[256];snprintf(path,sizeof path,"%s.ppm",name);FILE *f=fopen(path,"wb");assert(f);
+    fprintf(f,"P6\n368 448\n255\n");for(int i=0;i<368*448;i++) { unsigned char b[]={pixels[i]>>16,pixels[i]>>8,pixels[i]};fwrite(b,1,3,f); }fclose(f);
+}
+int main(void)
+{
+    pet_state_init(); assert(pet_state_get()->hunger==100);
+    uint32_t tick=pet_state_get()->last_tick;
+    pet_state_tick(tick+179);assert(pet_state_get()->hunger==100);
+    pet_state_tick(tick+180);assert(pet_state_get()->hunger==99);
+    for(int i=1;i<=200;i++)pet_state_tick(tick+180+i*3600);
+    assert(pet_state_get()->hunger==20);assert(pet_state_get()->energy==20);
+    pet_state_tick(0);assert(pet_state_get()->hunger==20);
+    pet_state_feed();assert(pet_state_get()->hunger==50);
+    for(int i=0;i<200;i++)pet_state_feed();
+    assert(pet_state_get()->hunger==100);assert(pet_state_get()->stage==PET_STAGE_ELDER);
+    unsigned stars=pet_state_get()->evolution_progress;uint64_t id=pet_state_get()->pet_id;
+    pet_state_init();assert(pet_state_get()->pet_id==id);assert(pet_state_get()->evolution_progress==stars);
+    pet_state_reset();
+    for(unsigned n=1;n<=100;n++) {
+        pet_state_play();
+        assert(pet_state_get()->stage==(n>=100?PET_STAGE_ELDER:n>=60?PET_STAGE_ADULT:n>=30?PET_STAGE_TEEN:n>=10?PET_STAGE_CHILD:PET_STAGE_BABY));
+    }
+    pet_state_reset();
+    lv_init();lv_display_t *d=lv_display_create(368,448);
+    lv_display_set_color_format(d,LV_COLOR_FORMAT_XRGB8888);
+    lv_display_set_buffers(d,pixels,NULL,sizeof pixels,LV_DISPLAY_RENDER_MODE_DIRECT);lv_display_set_flush_cb(d,flush);
+    lv_indev_t *input=lv_indev_create();lv_indev_set_type(input,LV_INDEV_TYPE_POINTER);lv_indev_set_read_cb(input,read_touch);
+    ui_init(); shot("home");
+    tap(180,245); advance(60);
+    assert((int32_t)(s_hop_until-lv_tick_get()) > 0);
+    assert(lv_obj_has_flag(s_eyes[0], LV_OBJ_FLAG_HIDDEN));
+    assert(!lv_obj_has_flag(s_pet_heart, LV_OBJ_FLAG_HIDDEN));
+    shot("pet-cuddle");
+    advance(700);
+    assert(lv_obj_has_flag(s_pet_heart, LV_OBJ_FLAG_HIDDEN));
+    tap(60,385);assert(s_view==FOOD);shot("food");
+    tap(73,350);tap(73,350);advance(1400);assert(s_view==PARTY);assert(pet_state_get()->evolution_progress==1);shot("party");
+    tap(180,395);assert(s_view==HOME);tap(140,385);assert(s_view==CATCH);shot("play");
+    for(int i=0;i<5;i++){lv_obj_update_layout(s_target);int x=lv_obj_get_x(s_target)+48,y=lv_obj_get_y(s_target)+48;tap(x,y);}
+    assert(s_view==PARTY);assert(pet_state_get()->evolution_progress==2);
+    show(BATH);shot("bath");tap(60,173);tap(178,159);tap(298,174);tap(70,260);tap(294,264);
+    assert(s_view==PARTY);assert(pet_state_get()->evolution_progress==3);
+    show(SLEEP);shot("sleep");
+    assert(lv_obj_has_flag(s_eyes[0], LV_OBJ_FLAG_HIDDEN));
+    assert(!lv_obj_has_flag(s_closed_eyes[0], LV_OBJ_FLAG_HIDDEN));
+    assert(lv_obj_has_flag(s_open_mouth, LV_OBJ_FLAG_HIDDEN));
+    advance(2500);tap(48,46);assert(s_view==HOME);advance(4000);assert(pet_state_get()->evolution_progress==3);
+    show(SLEEP);advance(6100);assert(s_view==PARTY);assert(pet_state_get()->evolution_progress==4);
+    show(FOOD);tap(73,350);tap(48,46);advance(1400);
+    assert(s_view==HOME);assert(pet_state_get()->evolution_progress==4);
+    show(ALBUM);shot("album-locked");
+    for(int i=0;i<26;i++)pet_state_play();show(ALBUM);shot("album");show(HOME);shot("grown-pet");
+    show(SETTINGS);shot("settings");tap(180,180);assert(s_muted);
+    // Repeated navigation catches dangling object pointers/timers.
+    for(int i=0;i<100;i++){show((View)(i%8));advance(80);show(HOME);advance(80);}
+    // Review every coat and all five stages with production geometry.
+    Pet snapshot = saved;
+    for (int i=0; i<6; i++) {
+        saved = snapshot; saved.genes[GENE_BODY_COLOR] = i;
+        saved.evolution_progress = 0; pet_state_init(); show(HOME);
+        if (lv_tick_get()%4200 > 3800) advance(500);
+        char name[32]; snprintf(name,sizeof name,"pet-coat-%d",i); shot(name);
+    }
+    const unsigned milestones[] = {0,10,30,60,100};
+    for (int i=0; i<5; i++) {
+        saved = snapshot; saved.evolution_progress = milestones[i];
+        pet_state_init(); show(HOME);
+        if (lv_tick_get()%4200 > 3800) advance(500);
+        char name[32]; snprintf(name,sizeof name,"pet-stage-%d",i); shot(name);
+    }
+    saved = snapshot; pet_state_init();
+    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles");
+    lv_deinit();
+    return 0;
+}

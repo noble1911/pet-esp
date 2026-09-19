@@ -1,18 +1,41 @@
-// audio implementation — skeleton.
-
+// Short, quiet synthesised chirps. Codec writes stay off the LVGL task.
 #include "audio.h"
+#include <math.h>
+#include "bsp/esp-bsp.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
 #include "esp_log.h"
-
-static const char *TAG = "audio";
-
+#include <stdatomic.h>
+static QueueHandle_t s_queue;
+static esp_codec_dev_handle_t s_codec;
+static atomic_bool s_muted;
+static void sound_task(void *arg)
+{
+    (void)arg; sfx_id_t fx; int16_t pcm[256];
+    for (;;) {
+        if(xQueueReceive(s_queue,&fx,portMAX_DELAY)!=pdTRUE) continue;
+        if(atomic_load(&s_muted)) continue;
+        int hz=fx==SFX_HAPPY?880:fx==SFX_EMOTE?660:740;
+        for(int block=0;block<8;block++) {
+            for(int i=0;i<256;i++) {
+                int n=block*256+i;
+                float envelope=sinf(3.14159265f*n/2048);
+                pcm[i]=(int16_t)(envelope*1800*sinf(6.2831853f*(hz+n/8)*n/16000));
+            }
+            if(esp_codec_dev_write(s_codec,pcm,sizeof(pcm))!=ESP_OK) break;
+        }
+    }
+}
 void audio_init(void)
 {
-    // TODO: codec bring-up; defer sound design (architecture §11).
-    ESP_LOGI(TAG, "init (skeleton)");
+    s_codec=bsp_audio_codec_speaker_init();
+    if(!s_codec) return;
+    esp_codec_dev_sample_info_t fmt={.sample_rate=16000,.channel=1,.bits_per_sample=16};
+    if(esp_codec_dev_open(s_codec,&fmt)!=ESP_OK) { ESP_LOGW("audio","speaker unavailable"); return; }
+    esp_codec_dev_set_out_vol(s_codec,35);
+    s_queue=xQueueCreate(4,sizeof(sfx_id_t));
+    if(s_queue && xTaskCreate(sound_task,"pet_sound",4096,NULL,3,NULL)!=pdPASS) { vQueueDelete(s_queue); s_queue=NULL; }
 }
-
-void audio_play(sfx_id_t sfx)
-{
-    (void)sfx;
-    // TODO(build-order:12): non-blocking playback.
-}
+void audio_play(sfx_id_t sfx) { if(s_queue && !atomic_load(&s_muted)) xQueueSend(s_queue,&sfx,0); }
+void audio_set_muted(bool muted) { atomic_store(&s_muted,muted); }

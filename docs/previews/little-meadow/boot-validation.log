@@ -1,0 +1,304 @@
+I (97) boot:  3 assets           Unknown data     01 83 0ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)
+Saved PC:0x4037aa1a
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce2820,len:0x19b4
+load:0x403c8700,len:0x4
+load:0x403c8704,len:0xe8c
+load:0x403cb700,len:0x3144
+entry 0x403c8940
+I (26) boot: ESP-IDF v5.3.5 2nd stage bootloader
+I (27) boot: compile time May 16 2026 18:42:43
+I (27) boot: Multicore bootloader
+I (30) boot: chip revision: v0.2
+I (34) boot: efuse block revision: v1.3
+I (38) qio_mode: Enabling QIO for flash chip WinBond
+I (44) boot.esp32s3: Boot SPI Speed : 80MHz
+I (49) boot.esp32s3: SPI Mode       : QIO
+I (53) boot.esp32s3: SPI Flash Size : 16MB
+I (58) boot: Enabling RNG early entropy source...
+I (64) boot: Partition Table:
+I (67) boot: ## Label            Usage          Type ST Offset   Length
+I (74) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (82) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (89) boot:  2 factory          factory app      00 00 00010000 00300000
+I (97) boot:  3 assets           Unknown data     01 83 00310000 00100000
+I (104) boot: End of partition table
+I (109) esp_image: segment 0: paddr=00010020 vaddr=3c080020 size=23584h (144772) map
+I (139) esp_image: segment 1: paddr=000335ac vaddr=3fc97300 size=037cch ( 14284) load
+I (143) esp_image: segment 2: paddr=00036d80 vaddr=40374000 size=09298h ( 37528) load
+I (153) esp_image: segment 3: paddr=00040020 vaddr=42000020 size=79be0h (498656) map
+I (231) esp_image: segment 4: paddr=000b9c08 vaddr=4037d298 size=0a04ch ( 41036) load
+I (247) boot: Loaded app from partition at offset 0x10000
+I (247) boot: Disabling RNG early entropy source...
+I (259) octal_psram: vendor id    : 0x0d (AP)
+I (259) octal_psram: dev id       : 0x02 (generation 3)
+I (260) octal_psram: density      : 0x03 (64 Mbit)
+I (264) octal_psram: good-die     : 0x01 (Pass)
+I (269) octal_psram: Latency      : 0x01 (Fixed)
+I (275) octal_psram: VCC          : 0x01 (3V)
+I (280) octal_psram: SRF          : 0x01 (Fast Refresh)
+I (286) octal_psram: BurstType    : 0x01 (Hybrid Wrap)
+I (291) octal_psram: BurstLen     : 0x01 (32 Byte)
+I (297) octal_psram: Readlatency  : 0x02 (10 cycles@Fixed)
+I (303) octal_psram: DriveStrength: 0x00 (1/1)
+I (309) MSPI Timing: PSRAM timing tuning index: 5
+I (314) esp_psram: Found 8MB PSRAM device
+I (318) esp_psram: Speed: 80MHz
+I (333) mmu_psram: Read only data copied and mapped to SPIRAM
+I (367) mmu_psram: Instructions copied and mapped to SPIRAM
+I (368) cpu_start: Multicore app
+I (629) esp_psram: SPI SRAM memory test OK
+I (637) cpu_start: Pro cpu start user code
+I (637) cpu_start: cpu freq: 240000000 Hz
+I (637) app_init: Application information:
+I (640) app_init: Project name:     pet_esp
+I (645) app_init: App version:      b43f073-dirty
+I (650) app_init: Compile time:     Sep 19 2026 10:29:19
+I (656) app_init: ELF file SHA256:  35e3bd431...
+I (662) app_init: ESP-IDF:          v5.3.5
+I (666) efuse_init: Min chip rev:     v0.0
+I (671) efuse_init: Max chip rev:     v0.99 
+I (676) efuse_init: Chip rev:         v0.2
+I (681) heap_init: Initializing. RAM available for dynamic allocation:
+I (688) heap_init: At 3FCAB9A8 len 0003DD68 (247 KiB): RAM
+I (694) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (700) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (706) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM
+I (713) esp_psram: Adding pool of 7488K of PSRAM memory to heap allocator
+I (720) esp_psram: Adding pool of 50K of PSRAM memory gap generated due to end address alignment of drom to the heap allocator
+I (733) spi_flash: detected chip: winbond
+I (737) spi_flash: flash io: qio
+I (741) sleep: Configure to isolate all GPIO pins in sleep state
+I (748) sleep: Enable automatic switching of GPIO sleep configuration
+I (755) main_task: Started on CPU0
+I (759) esp_psram: Reserving pool of 32K of internal memory for DMA/internal allocations
+I (768) main_task: Calling app_main()
+I (772) pet: pet-esp boot
+I (781) pet_state: loaded from NVS: stage=1 H=20 Hp=20 E=20 Hy=20
+W (782) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs
+I (798) gpio: GPIO[15]| InputEn: 1| OutputEn: 1| OpenDrain: 1| Pullup: 0| Pulldown: 0| Intr:0 
+I (808) gpio: GPIO[14]| InputEn: 1| OutputEn: 1| OpenDrain: 1| Pullup: 0| Pulldown: 0| Intr:0 
+I (1038) LVGL: Starting LVGL task
+I (1038) ESP32-S3-Touch-AMOLED-1.8: Initialize SPI bus
+I (1038) sh8601: LCD panel create success, version: 1.0.2
+I (1274) gpio: GPIO[21]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:2 
+I (1298) renderer: display + touch + LVGL up (368x448)
+I (1347) renderer: assets mounted at /assets (647168/1048576 bytes)
+I (1353) power: AXP2101 online (status=0x32)
+I (1359) ES8311: Work in Slave mode
+I (1362) gpio: GPIO[46]| InputEn: 0| OutputEn: 1| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+I (1362) I2S_IF: channel mode 0 bits:16/16 channel:2 mask:1
+I (1368) I2S_IF: STD Mode 1 bits:16/16 channel:2 sample_rate:16000 mask:1
+I (1375) I2S_IF: channel mode 0 bits:16/16 channel:2 mask:1
+I (1382) I2S_IF: STD Mode 0 bits:16/16 channel:2 sample_rate:16000 mask:1
+I (1404) Adev_Codec: Open codec device OK
+I (1528) radio: init (skeleton) — proto v1
+I (1528) pet: Little Meadow ready; touch activities and active-time care enabled
+I (1549) main_task: Returned from app_main()
+
+
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)
+Saved PC:0x4037aa1a
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce2820,len:0x19b4
+load:0x403c8700,len:0x4
+load:0x403c8704,len:0xe8c
+load:0x403cb700,len:0x3144
+entry 0x403c8940
+I (26) boot: ESP-IDF v5.3.5 2nd stage bootloader
+I (27) boot: compile time May 16 2026 18:42:43
+I (27) boot: Multicore bootloader
+I (30) boot: chip revision: v0.2
+I (34) boot: efuse block revision: v1.3
+I (38) qio_mode: Enabling QIO for flash chip WinBond
+I (44) boot.esp32s3: Boot SPI Speed : 80MHz
+I (49) boot.esp32s3: SPI Mode       : QIO
+I (53) boot.esp32s3: SPI Flash Size : 16MB
+I (58) boot: Enabling RNG early entropy source...
+I (64) boot: Partition Table:
+I (67) boot: ## Label            Usage          Type ST Offset   Length
+I (74) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (82) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (89) boot:  2 factory          factory app      00 00 00010000 00300000
+I (97) boot:  3 assets           Unknown data     01 83 00310000 00100000
+I (104) boot: End of partition table
+I (109) esp_image: segment 0: paddr=00010020 vaddr=3c080020 size=23584h (144772) map
+I (139) esp_image: segment 1: paddr=000335ac vaddr=3fc97300 size=037cch ( 14284) load
+I (143) esp_image: segment 2: paddr=00036d80 vaddr=40374000 size=09298h ( 37528) load
+I (153) esp_image: segment 3: paddr=00040020 vaddr=42000020 size=79be0h (498656) map
+I (231) esp_image: segment 4: paddr=000b9c08 vaddr=4037d298 size=0a04ch ( 41036) load
+I (247) boot: Loaded app from partition at offset 0x10000
+I (247) boot: Disabling RNG early entropy source...
+I (259) octal_psram: vendor id    : 0x0d (AP)
+I (259) octal_psram: dev id       : 0x02 (generation 3)
+I (260) octal_psram: density      : 0x03 (64 Mbit)
+I (264) octal_psram: good-die     : 0x01 (Pass)
+I (269) octal_psram: Latency      : 0x01 (Fixed)
+I (275) octal_psram: VCC          : 0x01 (3V)
+I (280) octal_psram: SRF          : 0x01 (Fast Refresh)
+I (286) octal_psram: BurstType    : 0x01 (Hybrid Wrap)
+I (291) octal_psram: BurstLen     : 0x01 (32 Byte)
+I (297) octal_psram: Readlatency  : 0x02 (10 cycles@Fixed)
+I (303) octal_psram: DriveStrength: 0x00 (1/1)
+I (309) MSPI Timing: PSRAM timing tuning index: 5
+I (314) esp_psram: Found 8MB PSRAM device
+I (318) esp_psram: Speed: 80MHz
+I (333) mmu_psram: Read only data copied and mapped to SPIRAM
+I (367) mmu_psram: Instructions copied and mapped to SPIRAM
+I (368) cpu_start: Multicore app
+I (629) esp_psram: SPI SRAM memory test OK
+I (637) cpu_start: Pro cpu start user code
+I (637) cpu_start: cpu freq: 240000000 Hz
+I (637) app_init: Application information:
+I (640) app_init: Project name:     pet_esp
+I (645) app_init: App version:      b43f073-dirty
+I (650) app_init: Compile time:     Sep 19 2026 10:29:19
+I (656) app_init: ELF file SHA256:  35e3bd431...
+I (662) app_init: ESP-IDF:          v5.3.5
+I (666) efuse_init: Min chip rev:     v0.0
+I (671) efuse_init: Max chip rev:     v0.99 
+I (676) efuse_init: Chip rev:         v0.2
+I (681) heap_init: Initializing. RAM available for dynamic allocation:
+I (688) heap_init: At 3FCAB9A8 len 0003DD68 (247 KiB): RAM
+I (694) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (700) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (706) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM
+I (713) esp_psram: Adding pool of 7488K of PSRAM memory to heap allocator
+I (720) esp_psram: Adding pool of 50K of PSRAM memory gap generated due to end address alignment of drom to the heap allocator
+I (733) spi_flash: detected chip: winbond
+I (737) spi_flash: flash io: qio
+I (741) sleep: Configure to isolate all GPIO pins in sleep state
+I (748) sleep: Enable automatic switching of GPIO sleep configuration
+I (755) main_task: Started on CPU0
+I (759) esp_psram: Reserving pool of 32K of internal memory for DMA/internal allocations
+I (768) main_task: Calling app_main()
+I (772) pet: pet-esp boot
+I (781) pet_state: loaded from NVS: stage=1 H=20 Hp=20 E=20 Hy=20
+W (782) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs
+I (798) gpio: GPIO[15]| InputEn: 1| OutputEn: 1| OpenDrain: 1| Pullup: 0| Pulldown: 0| Intr:0 
+I (808) gpio: GPIO[14]| InputEn: 1| OutputEn: 1| OpenDrain: 1| Pullup: 0| Pulldown: 0| Intr:0 
+I (1038) LVGL: Starting LVGL task
+I (1038) ESP32-S3-Touch-AMOLED-1.8: Initialize SPI bus
+I (1038) sh8601: LCD panel create success, version: 1.0.2
+I (1274) gpio: GPIO[21]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:2 
+I (1298) renderer: display + touch + LVGL up (368x448)
+I (1347) renderer: assets mounted at /assets (647168/1048576 bytes)
+I (1353) power: AXP2101 online (status=0x32)
+I (1359) ES8311: Work in Slave mode
+I (1362) gpio: GPIO[46]| InputEn: 0| OutputEn: 1| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+I (1362) I2S_IF: channel mode 0 bits:16/16 channel:2 mask:1
+I (1368) I2S_IF: STD Mode 1 bits:16/16 channel:2 sample_rate:16000 mask:1
+I (1375) I2S_IF: channel mode 0 bits:16/16 channel:2 mask:1
+I (1382) I2S_IF: STD Mode 0 bits:16/16 channel:2 sample_rate:16000 mask:1
+I (1404) Adev_Codec: Open codec device OK
+I (1528) radio: init (skeleton) — proto v1
+I (1528) pet: Little Meadow ready; touch activities and active-time care enabled
+I (1549) main_task: Returned from app_main()
+
+
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)
+Saved PC:0x4037aa1a
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce2820,len:0x19b4
+load:0x403c8700,len:0x4
+load:0x403c8704,len:0xe8c
+load:0x403cb700,len:0x3144
+entry 0x403c8940
+I (26) boot: ESP-IDF v5.3.5 2nd stage bootloader
+I (27) boot: compile time May 16 2026 18:42:43
+I (27) boot: Multicore bootloader
+I (30) boot: chip revision: v0.2
+I (34) boot: efuse block revision: v1.3
+I (38) qio_mode: Enabling QIO for flash chip WinBond
+I (44) boot.esp32s3: Boot SPI Speed : 80MHz
+I (49) boot.esp32s3: SPI Mode       : QIO
+I (53) boot.esp32s3: SPI Flash Size : 16MB
+I (58) boot: Enabling RNG early entropy source...
+I (64) boot: Partition Table:
+I (67) boot: ## Label            Usage          Type ST Offset   Length
+I (74) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (82) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (89) boot:  2 factory          factory app      00 00 00010000 00300000
+I (97) boot:  3 assets           Unknown data     01 83 00310000 00100000
+I (104) boot: End of partition table
+I (109) esp_image: segment 0: paddr=00010020 vaddr=3c080020 size=23584h (144772) map
+I (139) esp_image: segment 1: paddr=000335ac vaddr=3fc97300 size=037cch ( 14284) load
+I (143) esp_image: segment 2: paddr=00036d80 vaddr=40374000 size=09298h ( 37528) load
+I (153) esp_image: segment 3: paddr=00040020 vaddr=42000020 size=79be0h (498656) map
+I (231) esp_image: segment 4: paddr=000b9c08 vaddr=4037d298 size=0a04ch ( 41036) load
+I (247) boot: Loaded app from partition at offset 0x10000
+I (247) boot: Disabling RNG early entropy source...
+I (259) octal_psram: vendor id    : 0x0d (AP)
+I (259) octal_psram: dev id       : 0x02 (generation 3)
+I (260) octal_psram: density      : 0x03 (64 Mbit)
+I (264) octal_psram: good-die     : 0x01 (Pass)
+I (269) octal_psram: Latency      : 0x01 (Fixed)
+I (275) octal_psram: VCC          : 0x01 (3V)
+I (280) octal_psram: SRF          : 0x01 (Fast Refresh)
+I (286) octal_psram: BurstType    : 0x01 (Hybrid Wrap)
+I (291) octal_psram: BurstLen     : 0x01 (32 Byte)
+I (297) octal_psram: Readlatency  : 0x02 (10 cycles@Fixed)
+I (303) octal_psram: DriveStrength: 0x00 (1/1)
+I (309) MSPI Timing: PSRAM timing tuning index: 5
+I (314) esp_psram: Found 8MB PSRAM device
+I (318) esp_psram: Speed: 80MHz
+I (333) mmu_psram: Read only data copied and mapped to SPIRAM
+I (367) mmu_psram: Instructions copied and mapped to SPIRAM
+I (368) cpu_start: Multicore app
+I (629) esp_psram: SPI SRAM memory test OK
+I (637) cpu_start: Pro cpu start user code
+I (637) cpu_start: cpu freq: 240000000 Hz
+I (637) app_init: Application information:
+I (640) app_init: Project name:     pet_esp
+I (645) app_init: App version:      b43f073-dirty
+I (650) app_init: Compile time:     Sep 19 2026 10:29:19
+I (656) app_init: ELF file SHA256:  35e3bd431...
+I (662) app_init: ESP-IDF:          v5.3.5
+I (666) efuse_init: Min chip rev:     v0.0
+I (671) efuse_init: Max chip rev:     v0.99 
+I (676) efuse_init: Chip rev:         v0.2
+I (681) heap_init: Initializing. RAM available for dynamic allocation:
+I (688) heap_init: At 3FCAB9A8 len 0003DD68 (247 KiB): RAM
+I (694) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (700) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (706) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM
+I (713) esp_psram: Adding pool of 7488K of PSRAM memory to heap allocator
+I (720) esp_psram: Adding pool of 50K of PSRAM memory gap generated due to end address alignment of drom to the heap allocator
+I (733) spi_flash: detected chip: winbond
+I (737) spi_flash: flash io: qio
+I (741) sleep: Configure to isolate all GPIO pins in sleep state
+I (748) sleep: Enable automatic switching of GPIO sleep configuration
+I (755) main_task: Started on CPU0
+I (759) esp_psram: Reserving pool of 32K of internal memory for DMA/internal allocations
+I (768) main_task: Calling app_main()
+I (772) pet: pet-esp boot
+I (781) pet_state: loaded from NVS: stage=1 H=20 Hp=20 E=20 Hy=20
+W (782) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs
+I (798) gpio: GPIO[15]| InputEn: 1| OutputEn: 1| OpenDrain: 1| Pullup: 0| Pulldown: 0| Intr:0 
+I (808) gpio: GPIO[14]| InputEn: 1| OutputEn: 1| OpenDrain: 1| Pullup: 0| Pulldown: 0| Intr:0 
+I (1038) LVGL: Starting LVGL task
+I (1038) ESP32-S3-Touch-AMOLED-1.8: Initialize SPI bus
+I (1038) sh8601: LCD panel create success, version: 1.0.2
+I (1274) gpio: GPIO[21]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:2 
+I (1298) renderer: display + touch + LVGL up (368x448)
+I (1347) renderer: assets mounted at /assets (647168/1048576 bytes)
+I (1353) power: AXP2101 online (status=0x32)
+I (1359) ES8311: Work in Slave mode
+I (1362) gpio: GPIO[46]| InputEn: 0| OutputEn: 1| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+I (1362) I2S_IF: channel mode 0 bits:16/16 channel:2 mask:1
+I (1368) I2S_IF: STD Mode 1 bits:16/16 channel:2 sample_rate:16000 mask:1
+I (1375) I2S_IF: channel mode 0 bits:16/16 channel:2 mask:1
+I (1382) I2S_IF: STD Mode 0 bits:16/16 channel:2 sample_rate:16000 mask:1
+I (1404) Adev_Codec: Open codec device OK
+I (1528) radio: init (skeleton) — proto v1
+I (1528) pet: Little Meadow ready; touch activities and active-time care enabled
+I (1549) main_task: Returned from app_main()
