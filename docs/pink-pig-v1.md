@@ -49,3 +49,16 @@ synchronisation still failed before any writes. Rosy pig is built and ready,
 but is not yet installed on the device. Reconnect the device before retrying;
 do not erase NVS. Existing firmware and save remain unchanged by this failed
 attempt. Logs: `/tmp/pet-pig-final-build.log`, `/tmp/pet-pig-flash.log`.
+
+## Successful flash after USB reconnect — 2026-09-19 20:03 UTC
+
+Reconnecting restored USB communication. Built and flashed commit `bae2114`
+(the `pink-pig-v1` code plus deployment notes) via `/dev/cu.usbmodem101`.
+Application size remains `0x245f20`, with 24% free. Esptool verified every
+written image and finished successfully; NVS was not erased. The voice gateway
+recorded the same device's authenticated session ready at 20:03:06 UTC.
+
+USB disappeared during the optional serial boot capture, so this verification
+uses the successful flash/hash checks and gateway reconnection, not a physical
+screen capture or reread of the saved state. Rosy pig is now installed as
+choice 6 of 6. Log: `/tmp/pet-pig-reconnect-flash.log`.
