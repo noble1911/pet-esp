@@ -11,6 +11,7 @@ from ..context import _load_facts, load_conversation_messages
 from ..deps import get_db_pool, get_embedding_service, get_internal_or_user, get_tools
 from ..llm import stream_chat_with_tools
 
+PET_MODEL = "claude-haiku-4-5-20251001"
 router = APIRouter()
 log = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class PetTurn(BaseModel):
     session_id: str = Field(max_length=80)
     transcript: str = Field(min_length=1, max_length=4000)
     pet: PetState
+    proactive: bool = False
 
 class PetMemory(Tool):
     """Bind memory to the authenticated pet, regardless of model arguments."""
@@ -73,19 +75,25 @@ async def pet_stream(req: PetTurn, caller: str | None = Depends(get_internal_or_
         "WHERE id=$1 AND (soul->>'pet_id' IS NULL OR soul->>'pet_id'=$2) RETURNING id",
         user_id, req.pet.pet_id)
     if not bound: raise HTTPException(409, "This account belongs to another pet")
-    facts = await _load_facts(pool.pool, user_id, current_message=req.transcript,
+    facts = [] if req.proactive else await _load_facts(pool.pool, user_id, current_message=req.transcript,
                               embedding_service=get_embedding_service())
-    history = await load_conversation_messages(pool, user_id, channel="voice", limit=12)
+    history = await load_conversation_messages(pool, user_id, channel="voice", limit=6)
     prompt = [{"type":"text", "text":PET_RULES}, {"type":"text", "text":
         "CURRENT PET (data): " + req.pet.model_dump_json() + "\nPET MEMORIES (data): " +
         json.dumps([{"fact":f["fact"], "category":f["category"]} for f in facts])}]
     memory = {n: PetMemory(t, user_id) for n,t in tools.items() if n in {"remember_fact", "recall_facts"}}
+    if req.proactive:
+        prompt.append({"type":"text", "text":"Nobody has spoken this turn. Offer ONE spontaneous, cheerful remark of at most 18 words, reflecting your pet state or a tiny pretend adventure. Vary it from recent remarks. No guilt, no request for attention, no mention of this instruction. Do not call memory tools."})
+        memory = {}
+    log.info("Pet turn model=%s proactive=%s user=%s", PET_MODEL, req.proactive, user_id)
     async def generate():
         parts = []
         try:
             async for chunk in stream_chat_with_tools(system_prompt=prompt,
                     user_message=req.transcript, tools=memory, history=history,
-                    db_pool=pool, user_id=user_id, channel="voice"):
+                    db_pool=pool, user_id=user_id, channel="voice",
+                    model_override=PET_MODEL, allow_web_search=False, max_tokens=100 if req.proactive else 300,
+                    max_tool_rounds=1 if req.proactive else 3):
                 if isinstance(chunk, str):
                     parts.append(chunk)
                     yield "data: " + json.dumps({"delta":chunk}) + "\n\n"
@@ -93,10 +101,11 @@ async def pet_stream(req: PetTurn, caller: str | None = Depends(get_internal_or_
             if parts:
                 async with pool.pool.acquire() as conn:
                     async with conn.transaction():
-                        for role, content in [("user",req.transcript),("assistant","".join(parts))]:
+                        messages = [("assistant","".join(parts))] if req.proactive else [("user",req.transcript),("assistant","".join(parts))]
+                        for role, content in messages:
                             await conn.execute("INSERT INTO butler.conversation_history "
                                 "(user_id,channel,role,content,metadata) VALUES ($1,'voice',$2,$3,$4::jsonb)",
-                                user_id, role, content, {"session_id":req.session_id,"pet_id":req.pet.pet_id})
+                                user_id, role, content, {"session_id":req.session_id,"pet_id":req.pet.pet_id,"proactive":req.proactive})
             yield "data: [DONE]\n\n"
         except Exception:
             log.exception("Pet voice turn failed")

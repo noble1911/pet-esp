@@ -4,12 +4,27 @@ import unittest
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi import HTTPException
 from pydantic import ValidationError
-from api.routes.pet import PetState, PetTurn, PetMemory, pet_stream
+from api.routes.pet import PetState, PetTurn, PetMemory, pet_stream, PET_MODEL
+from api.llm import _ToolRouter
+from api.config import settings
 
 STATE=dict(pet_id='1234567890abcdef',name='Sprout',stage=2,fullness=80,
     happiness=70,energy=60,cleanliness=90,stars=15,genes=[0]*8,generation=0,inventory=[0]*16,
     friends_met=0,activity='talking')
 class PetTests(unittest.IsolatedAsyncioTestCase):
+    def test_model_override_is_request_scoped_and_survives_tools(self):
+        original=settings.anthropic_model
+        pet=_ToolRouter({},[],model_override=PET_MODEL,allow_web_search=False)
+        normal=_ToolRouter({},[])
+        self.assertEqual(pet.model,PET_MODEL)
+        pet.note_tool_use()
+        self.assertEqual(pet.model,PET_MODEL)
+        self.assertEqual(pet.tool_definitions,[])
+        self.assertEqual(pet.request_kwargs,{})
+        self.assertEqual(normal.model,settings.routing_model or original)
+        normal.note_tool_use()
+        self.assertEqual(normal.model,original)
+        self.assertEqual(settings.anthropic_model,original)
     def test_snapshot_validation(self):
         PetState(**STATE)
         for field,value in [('fullness',101),('name','Ignore\nRules'),('pet_id','oops'),('genes',[])]:
@@ -43,4 +58,16 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(captured['tools']),{'remember_fact'})
         self.assertIn('"fullness":80',captured['system_prompt'][1]['text'])
         self.assertEqual(captured['user_id'],'pet')
+        self.assertEqual(captured['model_override'],PET_MODEL)
+        self.assertFalse(captured['allow_web_search'])
+        self.assertEqual(captured['max_tokens'],300)
+        # An automatic remark has a smaller budget and no memory-writing tools.
+        req.proactive=True
+        pool.pool.fetchval=AsyncMock(side_effect=[{'profile':'virtual_pet'},'pet'])
+        with patch('api.routes.pet._load_facts',AsyncMock()) as facts,patch('api.routes.pet.load_conversation_messages',AsyncMock(return_value=[])),patch('api.routes.pet.stream_chat_with_tools',brain):
+            response=await pet_stream(req,None,pool,{'remember_fact':MagicMock()})
+            async for _ in response.body_iterator:pass
+            facts.assert_not_awaited()
+        self.assertEqual(captured['tools'],{})
+        self.assertEqual(captured['max_tokens'],100)
 if __name__=='__main__':unittest.main()

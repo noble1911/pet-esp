@@ -59,3 +59,15 @@ Speech storage now explicitly uses PSRAM with `xStreamBufferCreateStatic`; its c
 Voice now stays in the normal room, with a holdable speech bubble, listening level feedback, thinking/reply text, and mouth animation. BOOT also keeps other care screens in place. Host checks cover touch hold/release, BOOT press/release, the 20-second recording limit, and preserving an active bath. All 28 gateway tests pass, including empty microphone and silence feedback.
 
 Live device retest after the fix: one 1.20-second hold sent 38,400 PCM bytes; Groq transcribed “Hello.”, the dedicated pet endpoint returned HTTP 200, and Kokoro generated the reply. Device logs show microphone frame counts increasing from 3,078 to 3,138 during that recording.
+
+## Haiku and occasional little chats
+
+Only the pet uses `claude-haiku-4-5-20251001`, including memory-tool follow-ups. The shared streaming helper accepts a request-local model override; default Butler and routing settings are untouched. Pet replies cap output at 300 tokens, spontaneous remarks at 100. No web-search tools or fallback to a larger model are enabled for the pet. Recent conversation context is limited to six messages; deliberate conversations retain scoped vector memory.
+
+With **Options → Little chats: on**, the pet can volunteer a brief, state-aware comment in its home room. The first opportunity is about 90 seconds after boot; subsequent opportunities are randomly spaced 4–7 minutes apart. Manual conversations reset that cooldown. Automatic remarks are skipped while muted, at zero volume, during care activities or an ongoing conversation, offline, and after ten minutes without touch/BOOT interaction. The setting persists across restarts. Automatic remarks do not record or transmit microphone audio; hold-to-talk still interrupts it normally.
+
+Spontaneous remarks get an explicit automatic-turn instruction, no memory-writing tools or semantic lookup, and are stored only as the pet's own assistant messages (not invented child speech). This keeps them short and avoids paying for unnecessary background memory work.
+
+The shared helper change is preserved as `integrations/butler/llm_override.patch`; deploy it with the updated pet route. Backend isolation tests cover ordinary routing before/after tool use and pet override persistence across tool rounds.
+
+Live spontaneous-turn check passed: the ESP requested a remark at uptime 91.967 seconds, the pet route returned successfully, Kokoro generated speech, and the saved assistant message carried `proactive: true`. The running backend confirmed ordinary Butler `claude-opus-5` and pet `claude-haiku-4-5-20251001`. Gateway: 29 tests; backend: 6 tests; host gameplay/chatter guards passed.

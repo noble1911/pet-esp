@@ -10,6 +10,7 @@
 #include "esp_wifi.h"
 #include "esp_websocket_client.h"
 #include "esp_log.h"
+#include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -27,9 +28,10 @@
 #define PET_GATEWAY "ws://192.168.1.117:8770/ws"
 
 typedef struct { int kind; Pet pet; char activity[32]; size_t len; uint8_t pcm[640]; } Command;
-enum { START=1, END, CANCEL, PCM, CHECK, HELLO };
+enum { START=1, END, CANCEL, PCM, CHECK, HELLO, REMARK };
 static QueueHandle_t s_commands;
 static esp_websocket_client_handle_t s_ws;
+static atomic_bool s_auto=true;
 static atomic_int s_state=VOICE_OFFLINE;
 static atomic_bool s_wifi, s_ready, s_capturing, s_overflow, s_requested;
 static portMUX_TYPE s_lock=portMUX_INITIALIZER_UNLOCKED;
@@ -83,6 +85,21 @@ void voice_end_talk(const Pet *pet,const char *activity)
 }
 void voice_cancel(void) { atomic_store(&s_requested,false);audio_set_capture(false);atomic_store(&s_capturing,false);audio_voice_stop();enqueue(CANCEL,NULL,NULL); }
 void voice_check(void) { enqueue(CHECK,NULL,NULL); }
+bool voice_auto_enabled(void) { return atomic_load(&s_auto); }
+void voice_set_auto_enabled(bool enabled)
+{
+    atomic_store(&s_auto,enabled);
+    nvs_handle_t h;
+    if(nvs_open("pet_voice",NVS_READWRITE,&h)==ESP_OK) {
+        nvs_set_u8(h,"auto",enabled);nvs_commit(h);nvs_close(h);
+    }
+}
+bool voice_remark(const Pet *pet,const char *activity)
+{
+    if(!voice_auto_enabled() || !audio_is_ready() || !atomic_load(&s_ready) ||
+       atomic_load(&s_requested) || voice_get_state()!=VOICE_READY || audio_voice_playing())return false;
+    caption_set("");atomic_store(&s_state,VOICE_THINKING);enqueue(REMARK,pet,activity);return true;
+}
 static void mic(const uint8_t *p,size_t n)
 {
     if(!atomic_load(&s_capturing) || n>640) return;
@@ -186,6 +203,14 @@ static void worker(void *arg)
         } else if(c.kind==END) {
             audio_set_capture(false);atomic_store(&s_capturing,false);
             o=message("audio_end");add_pet(o,&c);send_json(o);turn_started=now;ESP_LOGI("voice","capture ended; mic frames=%u peak=%d",audio_mic_frames(),audio_mic_level());
+        } else if(c.kind==REMARK) {
+            // A manual press takes priority, even if it races this queued remark.
+            if(atomic_load(&s_requested))continue;
+            if(!voice_auto_enabled()) {atomic_store(&s_state,VOICE_READY);continue;}
+            o=message("text");add_pet(o,&c);cJSON_AddBoolToObject(o,"proactive",true);
+            cJSON_AddStringToObject(o,"text","A quiet moment in the pet's room.");
+            if(!send_json(o)) {atomic_store(&s_state,VOICE_READY);continue;}
+            turn_started=now;ESP_LOGI("voice","spontaneous pet remark requested");
         } else if(c.kind==PCM && atomic_load(&s_ready)) {
             if(esp_websocket_client_send_bin(s_ws,(char*)c.pcm,c.len,pdMS_TO_TICKS(300))!=(int)c.len) atomic_store(&s_overflow,true);
         } else if(c.kind==CANCEL) { send_json(message("cancel"));atomic_store(&s_state,atomic_load(&s_ready)?VOICE_READY:VOICE_OFFLINE); }
@@ -197,6 +222,9 @@ static void worker(void *arg)
 }
 void voice_init(void)
 {
+    nvs_handle_t h;uint8_t enabled=1;
+    if(nvs_open("pet_voice",NVS_READONLY,&h)==ESP_OK) {nvs_get_u8(h,"auto",&enabled);nvs_close(h);}
+    atomic_store(&s_auto,enabled!=0);
     ESP_LOGI("voice","pet identity: %016llx (%s)",(unsigned long long)pet_state_get()->pet_id,pet_state_get()->name);
     gpio_config_t btn={.pin_bit_mask=1ULL<<GPIO_NUM_0,.mode=GPIO_MODE_INPUT,.pull_up_en=GPIO_PULLUP_ENABLE};gpio_config(&btn);
     s_commands=xQueueCreate(24,sizeof(Command));if(!s_commands)return;

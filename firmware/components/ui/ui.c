@@ -30,6 +30,7 @@ static lv_obj_t *s_voice_status, *s_caption_label, *s_connection, *s_name_input,
 static bool s_talking, s_boot_down, s_boot_raw;
 static uint32_t s_talk_started, s_boot_changed, s_connection_tick, s_voice_until;
 static char s_last_caption[512];
+static uint32_t s_next_remark, s_last_manual_talk;
 static pixel_pet_art_t s_pet_art;
 static pixel_face_t s_face;
 static uint32_t s_started, s_hop_until, s_last_tick;
@@ -207,6 +208,7 @@ static const char *activity(void)
 static void talk_begin(void)
 {
     if(s_talking) return;
+    s_last_manual_talk=lv_tick_get();s_next_remark=s_last_manual_talk+240000+esp_random()%180001;
     s_talking=true;s_talk_started=lv_tick_get();s_voice_until=0;
     voice_start_talk(pet_state_get(),activity());
 }
@@ -219,6 +221,11 @@ static void talk_cb(lv_event_t *e)
 {
     if(lv_event_get_code(e)==LV_EVENT_PRESSED)talk_begin();
     if(lv_event_get_code(e)==LV_EVENT_RELEASED || lv_event_get_code(e)==LV_EVENT_PRESS_LOST)talk_end();
+}
+static void auto_chat_cb(lv_event_t *e)
+{
+    (void)e;voice_set_auto_enabled(!voice_auto_enabled());
+    s_next_remark=lv_tick_get()+90000;show(SETTINGS);
 }
 static void check_cb(lv_event_t *e) { (void)e;voice_check(); }
 static void name_save(lv_event_t *e)
@@ -341,6 +348,8 @@ static void show(View view)
         label(s_root,"Feed, play, nap and splash!",24,390,320,false);
     } else if(view==SETTINGS) {
         header("Grown-ups");
+        lv_obj_t *chatter=button(s_root,54,77,260,28,CREAM,auto_chat_cb,0);
+        label(chatter,voice_auto_enabled()?"Little chats: on":"Little chats: off",0,5,260,false);
         int batt=power_battery_percent(); char b[64];
         if(batt<0) snprintf(b,sizeof(b),"Battery: USB power");
         else snprintf(b,sizeof(b),"Battery: %d%%%s",batt,power_is_charging()?" (charging)":"");
@@ -408,6 +417,14 @@ static void frame(lv_timer_t *t)
     }
     if(s_talking && now-s_talk_started>=20000)talk_end();
     voice_state_t vs=voice_get_state();
+    if(!s_next_remark)s_next_remark=now+90000;
+    uint32_t inactivity=lv_display_get_inactive_time(NULL);
+    if((int32_t)(now-s_next_remark)>=0 && s_view==HOME && !s_talking &&
+       !s_muted && audio_get_volume()>0 && voice_auto_enabled() &&
+       (inactivity<600000 || now-s_last_manual_talk<600000) && vs==VOICE_READY && !audio_voice_playing()) {
+        s_next_remark=now+240000+esp_random()%180001;
+        voice_remark(pet_state_get(),activity());
+    }
     if(s_voice_status) {
         char caption[512];voice_caption(caption,sizeof(caption));
         bool speaking=vs==VOICE_SPEAKING || audio_voice_playing();

@@ -19,7 +19,12 @@ int power_battery_percent(void) { return 85; }
 bool power_is_charging(void) { return true; }
 void audio_play(sfx_id_t f) { (void)f; }
 void audio_set_muted(bool m) { (void)m; }
-static bool test_boot;
+static bool test_boot, test_auto=true;
+static unsigned test_remarks;
+bool voice_auto_enabled(void) {return test_auto;}
+void voice_set_auto_enabled(bool b) {test_auto=b;}
+bool voice_remark(const Pet *p,const char *a) {(void)p;(void)a;test_remarks++;return true;}
+
 static int test_starts, test_ends;
 static voice_state_t test_voice=VOICE_READY;
 void voice_init(void) {}
@@ -116,6 +121,14 @@ int main(void)
     // BOOT also leaves an ongoing care activity in place.
     show(BATH);test_boot=true;advance(200);assert(s_view==BATH && s_talking);
     test_boot=false;advance(200);assert(s_view==BATH && !s_talking);test_voice=VOICE_READY;
+    show(HOME);test_voice=VOICE_READY;s_muted=false;audio_set_volume(35);
+    s_next_remark=lv_tick_get()-1;unsigned remarks=test_remarks;
+    advance(80);assert(test_remarks==remarks+1);advance(80);assert(test_remarks==remarks+1);
+    s_next_remark=lv_tick_get()-1;test_auto=false;advance(80);assert(test_remarks==remarks+1);
+    test_auto=true;s_muted=true;advance(80);assert(test_remarks==remarks+1);
+    s_muted=false;audio_set_volume(0);advance(80);assert(test_remarks==remarks+1);
+    audio_set_volume(35);show(BATH);advance(80);assert(test_remarks==remarks+1);
+    show(HOME);s_next_remark=lv_tick_get()+90000;
     show(CONNECTION);advance(600);shot("connection");show(NAME);shot("name");
     lv_textarea_set_text(s_name_input,"Clover");tap(180,235);assert(s_view==SETTINGS);assert(!strcmp(pet_state_get()->name,"Clover"));
     show(NAME);lv_textarea_set_text(s_name_input,"");tap(180,235);assert(s_view==NAME);

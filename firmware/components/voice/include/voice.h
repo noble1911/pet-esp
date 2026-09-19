@@ -13,3 +13,7 @@ voice_state_t voice_get_state(void);
 void voice_status(char *out, size_t n);
 void voice_caption(char *out, size_t n);
 bool voice_boot_pressed(void);
+
+bool voice_auto_enabled(void);
+void voice_set_auto_enabled(bool enabled);
+bool voice_remark(const Pet *pet, const char *activity);

@@ -1,0 +1,60 @@
+diff --git a/butler/api/llm.py b/butler/api/llm.py
+index ead3bbd..b18d0aa 100644
+--- a/butler/api/llm.py
++++ b/butler/api/llm.py
+@@ -172,7 +172,11 @@ class _ToolRouter:
+         self,
+         all_tools: dict[str, Tool],
+         system_blocks: list[dict],
++        model_override: str | None = None,
++        allow_web_search: bool = True,
+     ) -> None:
++        self._allow_web_search = allow_web_search
++        self._model_override = model_override
+         self._all_tools = all_tools
+         self._base_blocks = system_blocks
+         self._tools_used = False
+@@ -190,6 +194,8 @@ class _ToolRouter:
+ 
+     @property
+     def model(self) -> str:
++        if self._model_override:
++            return self._model_override
+         if settings.routing_model and not self._tools_used:
+             return settings.routing_model
+         return settings.anthropic_model
+@@ -216,7 +222,7 @@ class _ToolRouter:
+         defs = [tool_to_anthropic_schema(t) for t in self._active_tools.values()]
+         if self._inactive_names:
+             defs.append(_REQUEST_TOOLS_SCHEMA)
+-        if settings.web_search_enabled:
++        if self._allow_web_search and settings.web_search_enabled:
+             defs.append(_web_search_tool(self.model))
+         # Anthropic caches all tool schemas up to the one with cache_control.
+         if defs:
+@@ -487,6 +493,9 @@ async def stream_chat_with_tools(
+     db_pool: DatabasePool | None = None,
+     user_id: str | None = None,
+     channel: str | None = None,
++    model_override: str | None = None,
++    allow_web_search: bool = True,
++    max_tokens: int | None = None,
+ ) -> AsyncGenerator[str | dict, None]:
+     """Stream Claude's response text, executing any tool calls between rounds.
+ 
+@@ -509,13 +518,13 @@ async def stream_chat_with_tools(
+         Text chunks as they arrive from Claude's streaming API
+     """
+     client = _get_client()
+-    router = _ToolRouter(tools, system_prompt)
++    router = _ToolRouter(tools, system_prompt, model_override=model_override, allow_web_search=allow_web_search)
+     messages = _build_messages(user_message, history, image=image)
+ 
+     for round_num in range(max_tool_rounds):
+         async with client.messages.stream(
+             model=router.model,
+-            max_tokens=settings.max_tokens,
++            max_tokens=max_tokens if max_tokens is not None else settings.max_tokens,
+             system=router.system_blocks,
+             tools=router.tool_definitions,
+             messages=messages,
