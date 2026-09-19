@@ -1,5 +1,7 @@
 # Five complete characters v1
 
+**Later addition:** [Rosy pig](pink-pig-v1.md) adds a sixth complete character and clarifies spoken personal names. This document records the original five-character release.
+
 Replaces the hybrid genetic renderer that moved facial parts independently.
 The original Sprout returns unchanged, joined by Cloud bunny, Pebble penguin,
 Peach kitten and Tiny dragon. Every character has 26 complete illustrated frames:

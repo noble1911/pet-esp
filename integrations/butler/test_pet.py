@@ -82,21 +82,21 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         for invalid in (-1,256,True,1.5):
             with self.assertRaises(ValidationError):PetState(**{**STATE,'genes':[invalid]*8})
 
-    def test_five_complete_characters_ignore_legacy_part_genes(self):
+    def test_six_complete_characters_ignore_legacy_part_genes(self):
         from api.routes.pet_characters import CHARACTERS
-        self.assertEqual(len(CHARACTERS),5)
+        self.assertEqual(len(CHARACTERS),6)
         for marker in range(256):
             state=PetState(**{**STATE,'artwork_version':3,'genes':[marker]*8})
             snapshot=trait_snapshot(state)
             self.assertEqual(set(snapshot),{'character','personality'})
-            character=CHARACTERS[marker-240 if 240<=marker<245 else 0]
-            self.assertEqual(snapshot['character']['name'],character['name'])
+            character=CHARACTERS[marker-240 if 240<=marker<240+len(CHARACTERS) else 0]
+            self.assertEqual(snapshot['character']['character_type'],character['name'])
             self.assertEqual(snapshot['character']['description'],character['appearance'])
-        for character in range(5):
+        for character in range(len(CHARACTERS)):
             for old_part in range(256):
                 genes=[old_part]*8;genes[6]=240+character
                 snapshot=trait_snapshot(PetState(**{**STATE,'artwork_version':3,'genes':genes}))
-                self.assertEqual(snapshot['character']['name'],CHARACTERS[character]['name'])
+                self.assertEqual(snapshot['character']['character_type'],CHARACTERS[character]['name'])
 
     def test_special_food_milestones_and_events(self):
         for stars in (0,9,10,24,25,49,50,99,100,2**32-1):
@@ -201,6 +201,26 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured['system_prompt'][1]['text'].count('"mode": "visible"'),1)
         self.assertEqual(captured['max_tokens'],100)
         self.assertIn('at most 10 words',' '.join(p['text'] for p in captured['system_prompt']))
+    async def test_personal_name_is_separate_from_character_and_old_introductions(self):
+        captured={};pool=MagicMock()
+        async def brain(**kwargs):
+            captured.update(kwargs)
+            if False:yield ''
+        for name,marker in (("Olive",240),("Olive",245),("Rosy Pig",245),("Anne-Marie",241)):
+            pool.pool.fetchval=AsyncMock(side_effect=[{'profile':'virtual_pet'},'pet'])
+            req=PetTurn(user_id='pet',session_id='test',transcript="What's your name?",
+                        pet={**STATE,'name':name,'artwork_version':3,'genes':[0]*6+[marker,0]})
+            with patch('api.routes.pet._load_facts',AsyncMock(return_value=[{'fact':'You are Rosy pig with a red snout','category':'identity'}])),patch('api.routes.pet.load_conversation_messages',AsyncMock(return_value=[{'role':'assistant','content':'I am Rosy pig with a red snout!'}])),patch('api.routes.pet.get_embedding_service',return_value=None),patch('api.routes.pet.stream_chat_with_tools',brain):
+                response=await pet_stream(req,None,pool,{})
+                async for _ in response.body_iterator:pass
+            data=captured['system_prompt'][1]['text']
+            self.assertIn('CURRENT IDENTITY (data): '+json.dumps({'personal_name':name}),data)
+            self.assertIn('"character_type":',data)
+            self.assertNotIn('"character": {"name":',data)
+            final=captured['system_prompt'][-1]['text']
+            self.assertIn('say exactly '+json.dumps("I'm "+name+"!")+" and stop.",final)
+            self.assertIn('Only describe your looks when the child asks',captured['system_prompt'][0]['text'])
+
     async def test_fresh_food_reaction_is_specific_and_has_no_memory_tools(self):
         pool=MagicMock();captured={}
         async def brain(**kwargs):

@@ -177,7 +177,7 @@ int main(void)
     for(int i=0;i<100;i++){show((View)(i%14));advance(80);show(HOME);advance(80);}
     // Review every whole character and all five stages with production geometry.
     Pet snapshot = saved;
-    for (int i=0; i<5; i++) {
+    for (int i=0; i<PET_CHARACTER_COUNT; i++) {
         saved = snapshot; saved.genes[GENE_PATTERN] = PET_CHARACTER_MARKER+i;
         saved.evolution_progress = 0; pet_state_init(); show(HOME);
         if (lv_tick_get()%4200 > 3800) advance(500);
@@ -516,15 +516,15 @@ int main(void)
     Pet before_character=*pet_state_get(), before_disk=saved;
     show(HOME);tap(320,275);assert(s_view==SETTINGS);tap(262,369);assert(s_view==PROFILE);shot("character-profile");
     tap(180,277);assert(s_view==TRAIT && s_trait_gene==0);unsigned start=s_trait_variant;
-    tap(50,418);assert(s_trait_variant==(start+4)%5);tap(310,418);assert(s_trait_variant==start);
-    for(unsigned c=0;c<5;c++) {
+    tap(50,418);assert(s_trait_variant==(start+PET_CHARACTER_COUNT-1)%PET_CHARACTER_COUNT);tap(310,418);assert(s_trait_variant==start);
+    for(unsigned c=0;c<PET_CHARACTER_COUNT;c++) {
         Pet preview=*pet_state_get();pixel_pet_art_t expected;preview.genes[GENE_PATTERN]=PET_CHARACTER_MARKER+s_trait_variant;
         pixel_pet_render(&expected,&preview,PIXEL_IDLE,12,0);assert(!memcmp(expected.pixels,s_pet_art.pixels,sizeof expected.pixels));
         char name[64];snprintf(name,sizeof name,"choose-character-%u",s_trait_variant);shot(name);tap(310,418);
     }
     assert(s_trait_variant==start && !memcmp(&before_disk,&saved,sizeof saved));
     assert(!memcmp(&before_character,pet_state_get(),sizeof before_character));
-    tap(310,418);unsigned choice=s_trait_variant;
+    while(s_trait_variant!=PET_CHARACTER_COUNT-1)tap(310,418);unsigned choice=s_trait_variant;
     fail_save=true;tap(180,368);assert(s_view==TRAIT && strstr(lv_label_get_text(s_hint),"Couldn't save"));
     assert(!memcmp(&before_disk,&saved,sizeof saved) && !memcmp(&before_character,pet_state_get(),sizeof before_character));
     fail_save=false;tap(180,368);assert(s_view==PROFILE && pet_character_id(pet_state_get())==choice);
@@ -532,7 +532,7 @@ int main(void)
     assert(!memcmp(&before_character,pet_state_get(),sizeof before_character));
     assert(!memcmp(&before_character,&saved,sizeof before_character));
     pet_state_init();assert(pet_character_id(pet_state_get())==choice);
-    assert(!pet_state_set_character(5) && !pet_state_set_character(255));
+    assert(!pet_state_set_character(PET_CHARACTER_COUNT) && !pet_state_set_character(255));
     // Personality browsing remains informative and cannot change the pet.
     show(PROFILE);tap(180,357);assert(s_view==TRAIT && s_trait_gene==GENE_PERSONALITY);
     before_disk=saved;unsigned personality=s_trait_variant;
@@ -598,7 +598,7 @@ int main(void)
     advance(900);s_muted=true;audio_set_muted(true);test_power_press=true;advance(2100);
     assert(s_view==HOME && test_audio_muted);s_muted=false;audio_set_muted(false);
     assert(pet_state_get()->pet_id==before_sleep.pet_id && pet_state_get()->evolution_progress==before_sleep.evolution_progress);
-    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; five whole characters, preview wraparound and transactional choice; milestone foods with original painted colours, paced meals, fades, compact mic, expanded back targets, PWR save/cancel/error recovery, reactive ball arcs and delayed fifth-bounce reward, cancel, failed saves and capped bonuses");
+    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; six whole characters, preview wraparound and transactional choice; milestone foods with original painted colours, paced meals, fades, compact mic, expanded back targets, PWR save/cancel/error recovery, reactive ball arcs and delayed fifth-bounce reward, cancel, failed saves and capped bonuses");
     lv_deinit();
     return 0;
 }

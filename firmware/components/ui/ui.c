@@ -470,7 +470,7 @@ static void make_profile(void)
     card=button(s_root,24,327,320,64,BLUE,trait_open_cb,GENE_PERSONALITY);
     label(card,"Personality",0,8,320,false);
     label(card,personality->values[pet_trait_choice(p,GENE_PERSONALITY)],0,34,320,false);
-    label(s_root,"Five little friends to choose from",16,412,336,false);
+    label(s_root,"Six little friends to choose from",16,412,336,false);
 }
 static void make_trait(void)
 {

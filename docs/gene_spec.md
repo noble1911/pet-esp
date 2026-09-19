@@ -2,13 +2,13 @@
 
 ## Current artwork version 3
 
-The active renderer uses five independently illustrated, complete characters.
+The active renderer uses six independently illustrated, complete characters.
 There are no separately rendered eyes, mouths, ears, markings, colour tints or
 body reshaping. See [five characters](five-characters-v1.md).
 
 The existing eight-byte `Pet.genes` field and NVS schema remain unchanged for
-save compatibility. Byte 6 values 240–244 explicitly select Sprout, Cloud bunny,
-Pebble penguin, Peach kitten and Tiny dragon. Every other value selects Sprout,
+save compatibility. Byte 6 values 240–245 explicitly select Sprout, Cloud bunny,
+Pebble penguin, Peach kitten, Tiny dragon and Rosy pig. Every other value selects Sprout,
 so an existing save returns to the original artwork without a reset or write.
 Byte 7 modulo 8 still selects the personality used in voice context. Other
 appearance bytes are retained but have no effect on current graphics.
@@ -19,7 +19,7 @@ The new character catalogue is `data/pet_characters.json`; regenerate with
 `python3 scripts/generate_pet_characters.py`. Legacy trait catalogues remain
 for personality and backend compatibility with artwork versions 1 and 2.
 Breeding and part-based evolution described below are historical design notes,
-not active features of the five-character version.
+not active features of the whole-character version.
 
 ## Historical gene vector (artwork versions 1–2)
 

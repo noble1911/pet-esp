@@ -80,7 +80,7 @@ extern const uint8_t PET_GENE_MAX[8];
 
 // The old eight-byte genes and trait catalogue remain for save/wire rollback.
 // Current appearance is one complete character; personality still uses byte 7.
-#define PET_CHARACTER_COUNT 5
+#define PET_CHARACTER_COUNT 6
 #define PET_CHARACTER_MARKER 240
 typedef struct { const char *name, *description; } pet_character_t;
 const pet_character_t *pet_character(unsigned index);

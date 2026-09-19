@@ -6,4 +6,5 @@ static const pet_character_t CHARACTERS[PET_CHARACTER_COUNT] = {
 {"Pebble penguin","A little blue penguin with tiny flippers."},
 {"Peach kitten","A peachy kitten with stripes and a curly tail."},
 {"Tiny dragon","A gentle little dragon with tiny wings."},
+{"Rosy pig","A pink little pig in a bright red dress."},
 };

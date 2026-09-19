@@ -22,4 +22,9 @@ CHARACTERS = [{'key': 'sprout',
   'name': 'Tiny dragon',
   'description': 'A gentle little dragon with tiny wings.',
   'appearance': 'A lavender baby dragon with tiny ivory horns, mint belly, little wings and a '
-                'curved spiky tail.'}]
+                'curved spiky tail.'},
+ {'key': 'pig',
+  'name': 'Rosy pig',
+  'description': 'A pink little pig in a bright red dress.',
+  'appearance': 'A pink pig with a rounded snout, two upright ears, rosy cheeks, a curly tail, a '
+                'bright red dress and little dark shoes.'}]
