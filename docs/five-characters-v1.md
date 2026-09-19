@@ -64,3 +64,25 @@ After selecting a new character, older firmware interprets byte 6 as an old
 marking gene, so the old marking may differ on rollback. All other genes and
 progress remain intact. Merely upgrading does not write any marker. Restoring
 this release recognises the selected character again if byte 6 was unchanged.
+
+## Device flash record — 2026-09-19
+
+Firmware tag `five-characters-v1` (`8d8d125`) built successfully with ESP-IDF
+5.3.5: application size `0x2290d0`, 28% of the 3 MiB app partition free.
+Flashed `/dev/cu.usbmodem101`; esptool verified the written hashes and reported
+success. NVS was not erased. The backend is deployed and healthy, with all
+16 tests passing against the deployed route.
+
+The gateway recorded this device reconnecting at 19:45:04 UTC, and its known
+Wi-Fi address 192.168.1.58 responds to ping. The first USB boot capture reached
+the loaded-app message, then stopped; subsequent serial sync attempts returned
+no data although the USB device remains enumerated. Thus the flash and network
+reachability are verified, but post-flash screen behaviour and the saved pet
+have not been independently rechecked from application logs. A user screen
+check / USB reconnect has been requested. This is not a verified on-device
+animation review.
+
+Local logs: `/tmp/pet-five-characters-build.log`,
+`/tmp/pet-five-characters-flash.log`, `/tmp/pet-five-characters-boot.log`,
+`/tmp/pet-five-characters-gateway.log`. Original imagegen sources and exact
+prompts are retained in `art/characters-v1`.
