@@ -2,7 +2,7 @@
 #include "lvgl.h"
 #include "pet_state.h"
 #define PIXEL_PET_SIZE 56
-typedef enum { PIXEL_IDLE, PIXEL_BLINK, PIXEL_HAPPY, PIXEL_EAT, PIXEL_SLEEP } pixel_face_t;
+typedef enum { PIXEL_IDLE, PIXEL_BLINK, PIXEL_HAPPY, PIXEL_EAT, PIXEL_SLEEP, PIXEL_TALK } pixel_face_t;
 typedef struct {
     uint32_t pixels[PIXEL_PET_SIZE * PIXEL_PET_SIZE];
     lv_image_dsc_t image;

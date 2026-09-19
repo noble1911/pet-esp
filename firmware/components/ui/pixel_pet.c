@@ -33,29 +33,40 @@ void pixel_pet_render(pixel_pet_art_t *a,const Pet *pet,pixel_face_t face,unsign
     };
     const uint32_t *c=coats[pet->genes[GENE_BODY_COLOR]%6];
     memset(a->pixels,0,sizeof a->pixels);
-    // Sprout silhouette and two little feet are the character's signature.
-    leaf(a,29,2);
-    if(pet->stage>=PET_STAGE_CHILD) {
-        rect(a,21,6,5,5,OUTLINE);rect(a,22,7,3,3,0xff8dce6d);
+    // Hand-authored stepped silhouette: broad cheeks, tucked feet, a waving arm.
+    // Each row is a span on the 56-pixel grid rather than a mathematical ellipse.
+    oval(a,9,49,40,5,0x554c715b);
+    if(face==PIXEL_SLEEP) {
+        oval(a,5,20,46,31,OUTLINE);oval(a,7,21,42,28,0xffb8a7d8);
+        oval(a,10,23,36,22,0xffe2d7f2);
     }
-    rect(a,15,45,8,8,OUTLINE);rect(a,34,45,8,8,OUTLINE);
-    rect(a,17,46,4,5,c[2]);rect(a,36,46,4,5,c[2]);
-    // A round, soft silhouette with a short sprout; avoid a pointed cone.
-    oval(a,8,13,40,37,OUTLINE);
-    // Fill only interior pixels: 1-pixel dark contour remains on all sides.
-    // Rendering is serialized by the LVGL task; avoid a 3 KB task-stack allocation.
+    leaf(a,30,3);
+    if(pet->stage>=PET_STAGE_CHILD) {
+        rect(a,21,8,5,5,OUTLINE);rect(a,22,9,3,3,0xff8dce6d);
+    }
+    rect(a,16,46,7,7,OUTLINE);rect(a,34,46,7,7,OUTLINE);
+    rect(a,17,47,5,5,c[0]);rect(a,35,47,5,5,c[0]);
+    static const uint8_t left[]={24,21,19,17,16,15,14,13,12,12,11,11,10,10,9,9,9,8,8,8,8,8,8,8,9,9,10,11,12,14,16,19,23};
+    for(int row=0;row<33;row++) {
+        int y=15+row,l=left[row],r=55-l;
+        rect(a,l,y,r-l+1,1,OUTLINE);
+    }
     static uint8_t mask[W*W];
     for(int i=0;i<W*W;i++)mask[i]=a->pixels[i]==OUTLINE;
-    for(int y=14;y<49;y++) for(int x=9;x<47;x++) {
+    for(int y=16;y<48;y++)for(int x=8;x<48;x++) {
         int i=y*W+x;
         if(mask[i]&&mask[i-1]&&mask[i+1]&&mask[i-W]&&mask[i+W])
-            a->pixels[i]=y>41?c[2]:y<23?c[1]:c[0];
+            a->pixels[i]=(y>43 || x>43)?c[2]:(y<25 || x<16)?c[1]:c[0];
     }
-    rect(a,19,17,5,2,CREAM);rect(a,15,20,3,2,CREAM);
-    // Left hand hugs the body; the right hand waves during celebrations.
-    oval(a,3,35,8,10,OUTLINE);oval(a,5,36,6,7,c[0]);
-    int hand_y=face==PIXEL_HAPPY?23+(phase%2)*2:34;
-    oval(a,45,hand_y,8,10,OUTLINE);oval(a,45,hand_y+1,6,7,c[0]);
+    rect(a,20,18,6,1,CREAM);rect(a,16,21,4,2,CREAM);
+    // Relaxed left paw and raised right paw echo the approved concept.
+    if(face!=PIXEL_SLEEP && face!=PIXEL_EAT) {
+        rect(a,6,35,5,10,OUTLINE);rect(a,4,39,6,5,OUTLINE);
+        rect(a,7,35,4,8,c[0]);rect(a,5,40,5,3,c[0]);
+        int hy=25+(face==PIXEL_HAPPY?(phase%2)*2:0);
+        rect(a,45,hy,7,13,OUTLINE);rect(a,47,hy-2,4,3,OUTLINE);
+        rect(a,45,hy+2,5,9,c[0]);rect(a,48,hy,2,4,c[1]);
+    }
     // Blush and simple bead eyes stay readable at 3x scale.
     rect(a,13,32,5,4,BLUSH);rect(a,38,32,5,4,BLUSH);
     if(face==PIXEL_SLEEP || face==PIXEL_BLINK) {
@@ -63,15 +74,16 @@ void pixel_pet_render(pixel_pet_art_t *a,const Pet *pet,pixel_face_t face,unsign
     } else if(face==PIXEL_HAPPY || face==PIXEL_EAT) {
         for(int x=18;x<=33;x+=15) {rect(a,x,28,2,3,OUTLINE);rect(a,x+2,27,3,2,OUTLINE);rect(a,x+5,28,1,3,OUTLINE);}
     } else {
-        oval(a,19,26,3,5,OUTLINE);oval(a,34,26,3,5,OUTLINE);
+        oval(a,19,27,3,4,OUTLINE);oval(a,34,26,3,4,OUTLINE);
     }
     if(face==PIXEL_SLEEP) {
         rect(a,26,33,4,2,OUTLINE);
     } else if(face==PIXEL_EAT && phase%2==0) {
         rect(a,25,34,6,2,OUTLINE);
     } else {
-        rect(a,23,32,10,5,OUTLINE);rect(a,25,37,6,2,OUTLINE);
-        rect(a,26,35,5,3,0xffed94b4);
+        rect(a,25,33,7,4,OUTLINE);rect(a,26,37,5,1,OUTLINE);
+        rect(a,27,35,4,2,0xffed94b4);
+        if(face==PIXEL_TALK && phase%2==0)rect(a,26,32,5,5,OUTLINE);
     }
     if(pet->stage>=PET_STAGE_TEEN) {
         rect(a,39,16,3,7,0xfff58dad);rect(a,37,18,7,3,0xfff58dad);rect(a,39,18,3,3,0xffffdf72);
@@ -85,13 +97,18 @@ void pixel_pet_render(pixel_pet_art_t *a,const Pet *pet,pixel_face_t face,unsign
         oval(a,21,38,15,12,OUTLINE);oval(a,23,39,11,9,0xffed5766);
         rect(a,27,35,2,5,OUTLINE);rect(a,29,35,4,2,0xff6eb66c);
         rect(a,25,40,2,3,0xffffd4be);
+        rect(a,19,42,5,3,OUTLINE);rect(a,20,42,4,2,c[0]);
+        rect(a,34,42,5,3,OUTLINE);rect(a,34,42,4,2,c[0]);
+        rect(a,39,49,2,2,0xffed5766);
     }
     if(face==PIXEL_SLEEP) {
         // Patchwork futon: pixel border, pillow, alternating mint/pink patches.
-        rect(a,8,37,40,17,OUTLINE);rect(a,10,36,36,17,0xffd6c5f1);
+        rect(a,7,37,42,17,OUTLINE);rect(a,9,36,38,17,0xffd6c5f1);
         for(int yy=39;yy<51;yy+=6)for(int xx=11;xx<45;xx+=8)
             rect(a,xx,yy,8,6,((xx/8+yy/6)%2)?0xff83cbb5:0xffe7a4c7);
         rect(a,10,37,36,2,0xffffe8ee);rect(a,11,51,34,1,0xffa18abe);
+        for(int x=14;x<44;x+=12){rect(a,x,43,5,1,0xffffe8ee);rect(a,x+2,41,1,5,0xffffe8ee);rect(a,x+2,43,1,1,0xffffd677);}
+        rect(a,15,35,5,4,c[0]);rect(a,36,35,5,4,c[0]);
     }
     a->image=(lv_image_dsc_t){.header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_ARGB8888,.w=W,.h=W,.stride=W*4},.data_size=sizeof a->pixels,.data=(const uint8_t*)a->pixels};
 }

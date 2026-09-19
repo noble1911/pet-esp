@@ -241,23 +241,25 @@ static void make_home(void)
         lv_obj_t *slot=button(s_root,24+i*82,12,74,38,CREAM,nav_cb,(int[]){FOOD,CATCH,SLEEP,BATH}[i]);
         lv_obj_set_style_border_width(slot,0,0);
         lv_obj_t *glyph=lv_image_create(slot);
-        lv_image_set_src(glyph,pixel_icon((unsigned)i));
+        lv_image_set_src(glyph,pixel_icon(i==1?6:(unsigned)i));
         lv_image_set_pivot(glyph,0,0);lv_image_set_scale(glyph,384);
         lv_image_set_antialias(glyph,false);lv_obj_set_pos(glyph,0,2);
         s_bars[i]=lv_bar_create(slot); lv_obj_set_size(s_bars[i],34,10); lv_obj_set_pos(s_bars[i],36,13);
         lv_obj_set_style_bg_color(s_bars[i],lv_color_hex(0xe9dfcf),LV_PART_MAIN);
         lv_obj_set_style_bg_color(s_bars[i],lv_color_hex(colors[i]),LV_PART_INDICATOR);
         lv_obj_set_style_radius(s_bars[i],0,LV_PART_MAIN); lv_obj_set_style_radius(s_bars[i],0,LV_PART_INDICATOR);
+        // Three easy-to-read pips, with the continuous value retained underneath.
+        shape(slot,46,13,3,10,CREAM,0);shape(slot,59,13,3,10,CREAM,0);
     }
     // Clear feedback lives on a cream strip, away from the detailed room art.
     shape(s_root,24,327,320,23,CREAM,0);
     s_hint=label(s_root,"Tap me for a cuddle",28,331,312,false);
     make_pet(106,167);
     // Voice stays in the room: hold the speech bubble; all care buttons remain.
-    lv_obj_t *talk=button(s_root,24,67,320,70,CREAM,NULL,0);
-    s_caption_label=label(talk,"",8,9,304,false);
-    lv_obj_set_height(s_caption_label,52);lv_label_set_long_mode(s_caption_label,LV_LABEL_LONG_SCROLL);
-    char greeting[80];snprintf(greeting,sizeof(greeting),"%s\nHold here to talk",pet_state_get()->name);
+    lv_obj_t *talk=button(s_root,24,67,320,44,CREAM,NULL,0);
+    s_caption_label=label(talk,"",8,6,304,false);
+    lv_obj_set_height(s_caption_label,32);lv_label_set_long_mode(s_caption_label,LV_LABEL_LONG_SCROLL);
+    char greeting[80];snprintf(greeting,sizeof(greeting),"%s - Hold here to talk",pet_state_get()->name);
     lv_label_set_text(s_caption_label,greeting);
     s_voice_status=s_hint;
     lv_obj_add_event_cb(talk,talk_cb,LV_EVENT_PRESSED,NULL);
@@ -270,7 +272,10 @@ static void make_home(void)
     int views[]={FOOD,CATCH,SLEEP,BATH};
     for(int i=0;i<4;i++) {
         lv_obj_t *b=button(s_root,24+i*82,352,74,72,(uint32_t[]){0xff95b0,0x93deaf,0xc5a1ed,0x85d6f3}[i],nav_cb,views[i]);
-        icon(b,i,8,0); label(b,names[i],0,51,74,false);
+        // Crisp inset lighting gives the little toy buttons depth.
+        shape(b,4,3,66,3,0xffeedf,0);shape(b,3,6,3,57,0xffeedf,0);
+        shape(b,4,65,66,3,0x9b688e,0);shape(b,67,6,3,59,0x9b688e,0);
+        icon(b,i,8,0); label(b,names[i],0,48,74,false);
         shape(b,21,68,32,3,colors[i],2);
     }
     refresh();
@@ -431,6 +436,9 @@ static void frame(lv_timer_t *t)
         bool busy=vs==VOICE_LISTENING || vs==VOICE_THINKING || speaking;
         if(strcmp(s_last_caption,caption)) { snprintf(s_last_caption,sizeof(s_last_caption),"%s",caption);s_voice_until=now+12000; }
         if(busy && caption[0])s_voice_until=now+12000;
+        bool expanded=busy || (caption[0] && (int32_t)(s_voice_until-now)>0);
+        lv_obj_set_height(lv_obj_get_parent(s_caption_label),expanded?70:44);
+        lv_obj_set_height(s_caption_label,expanded?52:32);
         if(vs==VOICE_LISTENING) {
             int level=audio_mic_level();
             lv_label_set_text(s_caption_label,level>300?"I'm listening...\nI can hear your voice!":"I'm listening...\nSpeak close to me");
@@ -442,7 +450,7 @@ static void frame(lv_timer_t *t)
             if(strcmp(lv_label_get_text(s_caption_label),caption))lv_label_set_text(s_caption_label,caption);
             lv_label_set_text(s_voice_status,speaking?"Chatting with you":"Hold here or BOOT to reply");
         } else {
-            char greeting[80];snprintf(greeting,sizeof(greeting),"%s\nHold here to talk",pet_state_get()->name);
+            char greeting[80];snprintf(greeting,sizeof(greeting),"%s - Hold here to talk",pet_state_get()->name);
             if(strcmp(lv_label_get_text(s_caption_label),greeting)) {lv_label_set_text(s_caption_label,greeting);refresh();}
         }
     }
@@ -454,7 +462,7 @@ static void frame(lv_timer_t *t)
         lv_obj_set_y(s_pet,s_pet_y+dy);
         bool asleep=s_view==SLEEP;
         bool delighted=s_view==PARTY || (hopping && !s_eating && !asleep);
-        s_face=asleep?PIXEL_SLEEP:(audio_voice_playing() && (now/180)%2)?PIXEL_EAT:s_eating?PIXEL_EAT:delighted?PIXEL_HAPPY:
+        s_face=asleep?PIXEL_SLEEP:audio_voice_playing()?PIXEL_TALK:s_eating?PIXEL_EAT:delighted?PIXEL_HAPPY:
                now%4200>4010?PIXEL_BLINK:PIXEL_IDLE;
         pixel_pet_render(&s_pet_art,pet_state_get(),s_face,now/180);
         lv_obj_invalidate(s_pet_image);

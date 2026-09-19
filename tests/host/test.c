@@ -36,7 +36,8 @@ voice_state_t voice_get_state(void) {return test_voice;}
 void voice_status(char *s,size_t n) {snprintf(s,n,"Wi-Fi: Connected\nHome network\nIP: 192.168.1.42\nSignal: -52 dBm\nVoice server: Ready\nCheck passed: server replied");}
 void voice_caption(char *s,size_t n) {snprintf(s,n,"Hello! I'm Sprout. Shall we play?");}
 bool voice_boot_pressed(void) {return test_boot;}
-bool audio_voice_playing(void) {return false;}
+static bool test_playing;
+bool audio_voice_playing(void) {return test_playing;}
 bool audio_is_ready(void) {return true;}
 int audio_mic_level(void) {return 800;}
 static int test_volume=35;
@@ -83,6 +84,14 @@ int main(void)
     lv_display_set_buffers(d,pixels,NULL,sizeof pixels,LV_DISPLAY_RENDER_MODE_DIRECT);lv_display_set_flush_cb(d,flush);
     lv_indev_t *input=lv_indev_create();lv_indev_set_type(input,LV_INDEV_TYPE_POINTER);lv_indev_set_read_cb(input,read_touch);
     ui_init(); shot("home");
+    s_voice_until=0;advance(80);lv_obj_update_layout(s_root);
+    assert(lv_obj_get_height(lv_obj_get_parent(s_caption_label))==44);
+    shot("home-idle");
+    test_playing=true;advance(80);lv_obj_update_layout(s_root);
+    assert(s_face==PIXEL_TALK);
+    assert(lv_obj_get_height(lv_obj_get_parent(s_caption_label))==70);
+    shot("home-speaking");test_playing=false;
+
     tap(180,245); advance(60);
     assert((int32_t)(s_hop_until-lv_tick_get()) > 0);
     assert(s_face == PIXEL_HAPPY);
