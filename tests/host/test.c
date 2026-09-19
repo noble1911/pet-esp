@@ -261,25 +261,60 @@ int main(void)
     show(HIDE);tap(76+108*(int)s_hiding,275);tap(48,46);advance(1500);
     assert(s_view==HOME && pet_state_get()->evolution_progress==play_before+1);
 
-    // The ball moves slowly, freezes under a finger, and rejects double-taps.
-    show(GAMES);tap(180,343);assert(s_view==BALL);shot("bouncy-ball");
+    // Each hit launches a new arc. Landing waits for the child, while flight
+    // cannot score again and the fifth bounce finishes before its care reward.
+    show(GAMES);tap(180,343);assert(s_view==BALL);shot("bouncy-ball-ready");
     play_before=pet_state_get()->evolution_progress;
-    advance(400);int ball_x=lv_obj_get_x(s_target),ball_y=lv_obj_get_y(s_target);
+    advance(1000);int ball_x=lv_obj_get_x(s_target),ball_y=lv_obj_get_y(s_target);
+    advance(1500);assert(lv_obj_get_x(s_target)==ball_x && lv_obj_get_y(s_target)==ball_y);
     tx=ball_x+48;ty=ball_y+48;pressed=true;advance(80);
-    int frozen_x=lv_obj_get_x(s_target),frozen_y=lv_obj_get_y(s_target);
     advance(1000);assert(s_ball_pressed && s_hits==0);
-    assert(lv_obj_get_x(s_target)==frozen_x && lv_obj_get_y(s_target)==frozen_y);
-    pressed=false;advance(60);assert(s_hits==1);
-    tap(frozen_x+48,frozen_y+48);assert(s_hits==1);
-    for(unsigned i=1;i<5;i++) {
-        advance(440);tap(lv_obj_get_x(s_target)+48,lv_obj_get_y(s_target)+48);
-        if(i<4)assert(s_hits==i+1);
+    assert(lv_obj_get_x(s_target)==ball_x && lv_obj_get_y(s_target)==ball_y);shot("bouncy-ball-squash");
+    pressed=false;advance(60);assert(s_hits==1 && s_ball_flying);
+    tap(ball_x+48,ball_y+48);assert(s_hits==1);advance(140);shot("bouncy-ball-flight");
+    assert(lv_obj_get_y(s_target)<ball_y-50 && s_face==PIXEL_PLAY);
+    for(unsigned hit=1;hit<5;hit++) {
+        advance(BALL_FLIGHT_MS+BALL_LAND_MS+80);
+        assert(s_view==BALL && !s_ball_flying && lv_obj_has_flag(s_target,LV_OBJ_FLAG_CLICKABLE));
+        int next_x=lv_obj_get_x(s_target),next_y=lv_obj_get_y(s_target);
+        assert(abs(next_x-ball_x)>=100);ball_x=next_x;ball_y=next_y;
+        advance(600);assert(lv_obj_get_x(s_target)==ball_x && lv_obj_get_y(s_target)==ball_y);
+        if(hit==1)shot("bouncy-ball-landed");
+        tap(ball_x+48,ball_y+48);assert(s_hits==hit+1 && s_ball_flying);
+        assert(pet_state_get()->evolution_progress==play_before);
+        // Extra taps in flight cannot skip a bounce.
+        tap(lv_obj_get_x(s_target)+48,lv_obj_get_y(s_target)+48);assert(s_hits==hit+1);
     }
-    assert(s_view==PARTY && test_event==PET_EVENT_BALL);
-    assert(pet_state_get()->evolution_progress==play_before+1);
+    advance(BALL_FLIGHT_MS);assert(s_view==BALL && s_ball_finish_at);shot("bouncy-ball-five");
+    assert(pet_state_get()->evolution_progress==play_before);
+    advance(BALL_WIN_MS+80);assert(s_view==PARTY && test_event==PET_EVENT_BALL);
+    assert(pet_state_get()->evolution_progress==play_before+1);shot("bouncy-ball-celebration");
     advance(2500);assert(pet_state_get()->evolution_progress==play_before+1);
-    show(BALL);tap(lv_obj_get_x(s_target)+48,lv_obj_get_y(s_target)+48);tap(48,46);advance(3000);
+    show(BALL);tap(lv_obj_get_x(s_target)+48,lv_obj_get_y(s_target)+48);tap(4,4);advance(3000);
     assert(s_view==HOME && pet_state_get()->evolution_progress==play_before+1);
+    // Both mirrored routes stay below navigation and above the status footer.
+    for(unsigned mirror=0;mirror<2;mirror++) {
+        show(BALL);s_ball_mirror=mirror;
+        for(unsigned hit=0;hit<5;hit++) {
+            tap(lv_obj_get_x(s_target)+48,lv_obj_get_y(s_target)+48);
+            for(unsigned tick=0;tick<22;tick++) {
+                advance(40);assert(s_view==BALL);
+                assert(lv_obj_get_x(s_target)>=26 && lv_obj_get_x(s_target)<=246);
+                assert(lv_obj_get_y(s_target)>=135 && lv_obj_get_y(s_target)<=276);
+            }
+        }
+        // Back out during the final celebration pause: no delayed reward.
+        assert(s_ball_finish_at);tap(4,4);advance(2000);
+        assert(s_view==HOME && pet_state_get()->evolution_progress==play_before+1);
+    }
+    if(getenv("PET_CAPTURE_BALL")) {
+        show(BALL);s_ball_mirror=false;
+        for(unsigned frame_no=0;frame_no<78;frame_no++) {
+            if(s_view==BALL && !s_ball_flying && !s_ball_finish_at && (int32_t)(lv_tick_get()-s_ball_ready)>=0)
+                tap(lv_obj_get_x(s_target)+48,lv_obj_get_y(s_target)+48);
+            char name[48];snprintf(name,sizeof name,"ball-motion-%02u",frame_no);shot(name);advance(40);
+        }
+    }
 
     // Old single-gift saves load unchanged. New placements are additive and
     // transactional; keep the legacy slot readable by rollback firmware.
@@ -596,7 +631,7 @@ int main(void)
     advance(900);s_muted=true;audio_set_muted(true);test_power_press=true;advance(2100);
     assert(s_view==HOME && test_audio_muted);s_muted=false;audio_set_muted(false);
     assert(pet_state_get()->pet_id==before_sleep.pet_id && pet_state_get()->evolution_progress==before_sleep.evolution_progress);
-    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; all eight traits, preview wraparound and unchanged genes/save; milestone foods, six coats without yellow eating patches, paced meals, fades, compact mic, expanded back targets, PWR save/cancel/error recovery, cancel, failed saves and capped bonuses");
+    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; all eight traits, preview wraparound and unchanged genes/save; milestone foods, six coats without yellow eating patches, paced meals, fades, compact mic, expanded back targets, PWR save/cancel/error recovery, reactive ball arcs and delayed fifth-bounce reward, cancel, failed saves and capped bonuses");
     lv_deinit();
     return 0;
 }

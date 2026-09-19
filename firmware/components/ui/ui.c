@@ -24,6 +24,9 @@
 #define FOOD_SETTLE_MS 2100
 #define FOOD_DURATION_MS 2800
 #define FOOD_FADE_MS 200
+#define BALL_FLIGHT_MS 720
+#define BALL_LAND_MS 160
+#define BALL_WIN_MS 650
 
 typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT, TREATS, REWARDS, POWER_OFF } View;
 static View s_view;
@@ -52,7 +55,10 @@ static uint32_t s_keepsake_started, s_keepsake_until;
 static unsigned s_keepsake_choice;
 static void play_keepsake(unsigned sticker);
 static uint32_t s_reveal_until, s_ball_ready, s_ball_time, s_next_butterfly, s_butterfly_until;
-static bool s_ball_pressed;
+static bool s_ball_pressed, s_ball_flying, s_ball_mirror;
+static int s_ball_from_x, s_ball_from_y, s_ball_to_x, s_ball_to_y;
+static uint32_t s_ball_finish_at;
+static lv_obj_t *s_ball_image, *s_ball_shadow, *s_ball_ring, *s_ball_trail[3];
 static int s_music_choice=-1;
 static lv_obj_t *s_covers[3], *s_cover_art[3], *s_butterfly, *s_butterfly_image;
 static lv_obj_t *s_weather, *s_weather_icon, *s_rain[6];
@@ -685,29 +691,118 @@ static void make_hide(void)
     s_hint=label(s_root,"",24,363,320,false);hide_place();
     label(s_root,"Find me three times. No hurry!",24,413,320,false);
 }
+static void ball_pose_scale(unsigned x,unsigned y)
+{
+    lv_image_set_scale_x(s_ball_image,x);lv_image_set_scale_y(s_ball_image,y);
+    // Keep the bottom of a squashed ball on the same baseline.
+    lv_obj_set_y(s_ball_image,36+(768-(int)y)*12/256);
+}
 static void ball_press(lv_event_t *e)
 {
     s_ball_pressed=lv_event_get_code(e)==LV_EVENT_PRESSED;
+    if(!s_ball_flying)ball_pose_scale(s_ball_pressed?850:768,s_ball_pressed?620:768);
 }
 static void ball_cb(lv_event_t *e)
 {
     (void)e;uint32_t now=lv_tick_get();
-    if(s_view!=BALL || (int32_t)(s_ball_ready-now)>0)return;
-    s_hits++;update_progress();audio_play(SFX_BOUNCE);s_ball_ready=now+400;s_hop_until=now+600;
-    if(s_hits==5){finish(1);return;}
-    lv_label_set_text(s_hint,(const char*[]){"Boing!","Up it goes!","Wheee!","One more bounce!"}[s_hits-1]);
+    if(s_view!=BALL || s_ball_flying || s_hits>=5 || (int32_t)(s_ball_ready-now)>0)return;
+    static const int landings[5][2]={{246,258},{26,252},{246,276},{26,276},{136,246}};
+    s_ball_from_x=lv_obj_get_x(s_target);s_ball_from_y=lv_obj_get_y(s_target);
+    s_ball_to_x=s_ball_mirror?272-landings[s_hits][0]:landings[s_hits][0];
+    s_ball_to_y=landings[s_hits][1];
+    s_hits++;update_progress();audio_play(SFX_BOUNCE);
+    s_ball_time=now;s_ball_flying=true;s_ball_ready=now+BALL_FLIGHT_MS+BALL_LAND_MS;
+    s_hop_until=now+BALL_FLIGHT_MS;
+    lv_obj_remove_flag(s_target,LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(s_ball_ring,LV_OBJ_FLAG_HIDDEN);
+    char text[32];snprintf(text,sizeof text,"%u / 5 bounces",s_hits);lv_label_set_text(s_counter,text);
+    lv_label_set_text(s_hint,(const char*[]){"Boing! Over there!","Whoosh! Across the room!","Wheee! Look at it fly!","One more! You can do it!","Five! A big happy bounce!"}[s_hits-1]);
+}
+static void ball_arc(float t,int *x,int *y)
+{
+    if(t<0)t=0;
+    if(t>1)t=1;
+    float eased=t*t*(3.0f-2.0f*t);
+    *x=s_ball_from_x+(int)((s_ball_to_x-s_ball_from_x)*eased);
+    *y=s_ball_from_y+(int)((s_ball_to_y-s_ball_from_y)*t)-(int)(sinf(t*3.14159265f)*105);
+}
+static void ball_frame(uint32_t now)
+{
+    if(s_ball_finish_at && (int32_t)(now-s_ball_finish_at)>=0) {finish(1);return;}
+    if(s_ball_flying) {
+        uint32_t age=now-s_ball_time;
+        if(age>=BALL_FLIGHT_MS) {
+            s_ball_flying=false;lv_obj_set_pos(s_target,s_ball_to_x,s_ball_to_y);
+            lv_image_set_rotation(s_ball_image,0);ball_pose_scale(880,590);
+            for(unsigned i=0;i<3;i++)lv_obj_add_flag(s_ball_trail[i],LV_OBJ_FLAG_HIDDEN);
+            lv_obj_remove_flag(s_ball_ring,LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_pos(s_ball_ring,s_ball_to_x+12,s_ball_to_y+58);
+            lv_obj_set_size(s_ball_ring,72,22);lv_obj_set_style_opa(s_ball_ring,LV_OPA_COVER,0);
+            lv_obj_set_pos(s_ball_shadow,s_ball_to_x+17,s_ball_to_y+77);
+            lv_obj_set_width(s_ball_shadow,62);lv_obj_set_style_bg_opa(s_ball_shadow,LV_OPA_20,0);
+            s_hop_until=now+450;audio_play(SFX_STAR);
+            if(s_hits==5)s_ball_finish_at=now+BALL_WIN_MS;
+        } else {
+            float t=age<80?0:(age-80)/(float)(BALL_FLIGHT_MS-80);int x,y;ball_arc(t,&x,&y);
+            lv_obj_set_pos(s_target,x,y);
+            ball_pose_scale(age<80?880:720,age<80?590:820);
+            lv_image_set_rotation(s_ball_image,(int)(t*3600));
+            int ground=s_ball_from_y+(int)((s_ball_to_y-s_ball_from_y)*t);
+            lv_obj_set_pos(s_ball_shadow,x+25,ground+78);lv_obj_set_width(s_ball_shadow,46);
+            lv_obj_set_style_bg_opa(s_ball_shadow,LV_OPA_10,0);
+            for(unsigned i=0;i<3;i++) {
+                float behind=t-(i+1)*0.12f;
+                if(behind<=0)lv_obj_add_flag(s_ball_trail[i],LV_OBJ_FLAG_HIDDEN);
+                else {ball_arc(behind,&x,&y);lv_obj_set_pos(s_ball_trail[i],x+36,y+36);lv_obj_remove_flag(s_ball_trail[i],LV_OBJ_FLAG_HIDDEN);}
+            }
+        }
+    } else {
+        if(!s_ball_pressed)ball_pose_scale(768,768);
+        if(!lv_obj_has_flag(s_ball_ring,LV_OBJ_FLAG_HIDDEN)) {
+            uint32_t age=now-s_ball_time-BALL_FLIGHT_MS;
+            if(age>=320)lv_obj_add_flag(s_ball_ring,LV_OBJ_FLAG_HIDDEN);
+            else {int spread=(int)(age/12);lv_obj_set_pos(s_ball_ring,s_ball_to_x+12-spread,s_ball_to_y+58-spread/3);
+                lv_obj_set_size(s_ball_ring,72+spread*2,22+spread*2/3);
+                lv_obj_set_style_opa(s_ball_ring,(lv_opa_t)(255-age*255/320),0);}
+        }
+        if(s_hits<5 && (int32_t)(now-s_ball_ready)>=0) {
+            lv_obj_add_flag(s_target,LV_OBJ_FLAG_CLICKABLE);
+            if(s_hits)lv_label_set_text(s_hint,"It landed! Tap for another bounce.");
+        }
+    }
 }
 static void make_ball(void)
 {
-    room(false);header("Bouncy ball");progress();make_pet(82,136);
-    lv_obj_remove_flag(s_pet,LV_OBJ_FLAG_CLICKABLE);
-    s_target=button(s_root,136,265,96,96,CREAM,ball_cb,0);
+    room(false);header("Bouncy ball");progress();
+    for(unsigned i=0;i<5;i++) {
+        lv_obj_set_style_radius(s_dots[i],LV_RADIUS_CIRCLE,0);
+        lv_obj_set_style_border_width(s_dots[i],2,0);lv_obj_set_style_border_color(s_dots[i],lv_color_hex(INK),0);
+    }
+    make_pet(112,130);
+    // Give the ball room to fly, with a smaller pet cheering behind it.
+    lv_obj_set_size(s_pet,160,160);lv_image_set_scale(s_pet_image,512);
+    lv_obj_set_pos(s_pet_heart,106,8);lv_obj_remove_flag(s_pet,LV_OBJ_FLAG_CLICKABLE);
+    s_ball_mirror=(esp_random()&1)!=0;
+    s_ball_shadow=shape(s_root,153,343,62,12,INK,0);
+    lv_obj_set_style_radius(s_ball_shadow,LV_RADIUS_CIRCLE,0);lv_obj_set_style_bg_opa(s_ball_shadow,LV_OPA_20,0);
+    s_ball_ring=shape(s_root,148,324,72,22,GOLD,0);
+    lv_obj_set_style_radius(s_ball_ring,LV_RADIUS_CIRCLE,0);lv_obj_set_style_bg_opa(s_ball_ring,LV_OPA_TRANSP,0);
+    lv_obj_set_style_border_width(s_ball_ring,3,0);lv_obj_set_style_border_color(s_ball_ring,lv_color_hex(GOLD),0);
+    lv_obj_add_flag(s_ball_ring,LV_OBJ_FLAG_HIDDEN);
+    for(unsigned i=0;i<3;i++) {
+        s_ball_trail[i]=art(s_root,pixel_icon(4),0,0,256);
+        lv_obj_set_style_opa(s_ball_trail[i],(lv_opa_t)(210-i*45),0);lv_obj_add_flag(s_ball_trail[i],LV_OBJ_FLAG_HIDDEN);
+    }
+    s_target=button(s_root,136,266,96,96,CREAM,ball_cb,0);
     lv_obj_set_style_bg_opa(s_target,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(s_target,0,0);
-    art(s_target,pixel_icon(1),12,12,768);
+    lv_obj_set_style_translate_y(s_target,0,LV_STATE_PRESSED);
+    lv_obj_add_flag(s_target,LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    s_ball_image=art(s_target,pixel_icon(1),36,36,768);lv_image_set_pivot(s_ball_image,12,12);
     lv_obj_add_event_cb(s_target,ball_press,LV_EVENT_PRESSED,NULL);
     lv_obj_add_event_cb(s_target,ball_press,LV_EVENT_RELEASED,NULL);
     lv_obj_add_event_cb(s_target,ball_press,LV_EVENT_PRESS_LOST,NULL);
-    s_hint=label(s_root,"Tap the ball to bounce it!",24,405,320,false);
+    s_counter=label(s_root,"0 / 5 bounces",24,375,320,true);
+    s_hint=label(s_root,"Tap the ball. Make it fly!",16,410,336,false);
 }
 static void butterfly_cb(lv_event_t *e)
 {
@@ -827,6 +922,8 @@ static void show(View view)
     s_weather=NULL;s_weather_icon=NULL;s_butterfly=NULL;s_butterfly_image=NULL;
     memset(s_covers,0,sizeof s_covers);memset(s_cover_art,0,sizeof s_cover_art);memset(s_rain,0,sizeof s_rain);
     s_reveal_until=0;s_ball_ready=0;s_ball_pressed=false;s_ball_time=0;s_butterfly_until=0;
+    s_ball_flying=false;s_ball_finish_at=0;s_ball_image=NULL;s_ball_shadow=NULL;s_ball_ring=NULL;
+    memset(s_ball_trail,0,sizeof s_ball_trail);
     s_pet=NULL; s_target=NULL; s_hint=NULL; s_counter=NULL; s_sleep_bar=NULL;
     for(int i=0;i<4;i++) s_bars[i]=NULL;
     for(int i=0;i<5;i++) s_dots[i]=NULL;
@@ -1093,10 +1190,7 @@ static void frame(lv_timer_t *t)
     if(s_connection && now-s_connection_tick>=500) { char text[256];voice_status(text,sizeof(text));lv_label_set_text(s_connection,text);s_connection_tick=now; }
     if(now-s_last_tick>=10000) { pet_state_tick((uint32_t)time(NULL)); s_last_tick=now; refresh(); }
     if(s_view==HOME) {room_frame(now,vs);keepsake_frame(now,vs);}
-    if(s_view==BALL && s_target && !s_ball_pressed && (int32_t)(s_ball_ready-now)<=0) {
-        s_ball_time+=40;float phase=s_ball_time/4000.0f*6.2831853f;
-        lv_obj_set_pos(s_target,136+(int)(sinf(phase)*108),290-(int)(fabsf(sinf(phase))*144));
-    }
+    if(s_view==BALL && s_target)ball_frame(now);
     if(s_view==HIDE && s_reveal_until && (int32_t)(now-s_reveal_until)>=0) {
         if(s_hits==3)finish(1);else hide_place();
     }
@@ -1117,7 +1211,10 @@ static void frame(lv_timer_t *t)
             s_face=keepsake_actions[s_keepsake_choice].pose;
             lv_obj_set_y(s_pet,s_pet_y+(s_face==PIXEL_PLAY?-(int)(fabsf(sinf(now/120.0f))*10):0));
         }
-        pixel_pet_render(&s_pet_art,pet_state_get(),s_face,s_eating?(elapsed<FOOD_BITE_MS?0:3):now/180,
+        bool reaching=s_view==BALL && s_ball_flying && !audio_voice_playing() &&
+            vs!=VOICE_LISTENING && vs!=VOICE_THINKING && vs!=VOICE_SPEAKING;
+        if(reaching)s_face=PIXEL_PLAY;
+        pixel_pet_render(&s_pet_art,pet_state_get(),s_face,reaching?(s_ball_to_x>s_ball_from_x?3:0):s_eating?(elapsed<FOOD_BITE_MS?0:3):now/180,
                          keepsake && s_keepsake_choice==0?PIXEL_APPLE:s_food);
         lv_obj_invalidate(s_pet_image);
         if(hopping && !s_eating && !asleep && s_view!=HIDE) lv_obj_remove_flag(s_pet_heart,LV_OBJ_FLAG_HIDDEN);

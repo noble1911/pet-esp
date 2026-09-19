@@ -1,5 +1,7 @@
 # Little Meadow
 
+Play: [Bouncy ball v2](docs/bouncy-ball-v2.md) now launches to a new spot on every tap, with squash, spin, star trails and clear landing feedback. It waits between bounces so there is no rush.
+
 Controls: [Larger back target and PWR sleep](docs/back-power-v1.md) adds an easier top-left back button and saved power-off on a short PWR press. These changes await flashing and physical button testing.
 
 UI: [Speech and eating polish](docs/speech-polish-v1.md) adds a compact microphone, a tailed speech bubble and slower meals with correct coat colours.
