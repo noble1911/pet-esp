@@ -4,6 +4,7 @@
 #include "pet_sprites.h"
 #include "pet_icons.h"
 #include "special_food_art.h"
+#include "eating_food_masks.h"
 #define W PIXEL_PET_SIZE
 #define OUTLINE 0xff3d203dU
 #define CREAM   0xffffedb0U
@@ -42,7 +43,10 @@ void pixel_pet_render(pixel_pet_art_t *a,const Pet *pet,pixel_face_t face,unsign
         int r=((rgb>>11)&31)*255/31,g=((rgb>>5)&63)*255/63,b=(rgb&31)*255/31;
         // Tint only yellow fur; preserve food, quilt, tub, face and leaves.
         bool fur=r>175 && g>140 && b<185 && r>b+35 && g>b+25;
-        if(face==PIXEL_EAT && x>22 && x<50 && y>39)fur=false;
+        if(face==PIXEL_EAT) {
+            const uint8_t *span=eating_food_spans[phase<3?0:1][food][y];
+            if(x>=span[0] && x<span[1])fur=false;
+        }
         if(face==PIXEL_SLEEP && y>35)fur=false;
         if(face==PIXEL_BATH && y>39)fur=false;
         if(coat && fur) {

@@ -1,6 +1,8 @@
 # Little Meadow
 
-Voice: [Tiny Sprout](docs/creature-voice-v2.md) adds a stronger creature voice and short, playful replies. Sprout can chat using the existing Mac mini voice stack. Hold the speech bubble or BOOT to talk without leaving the pet screen. It uses Haiku and occasionally offers a little comment. Rename it, toggle Little chats and check Wi-Fi in Options. See [voice controls, setup and rollback](docs/voice-v1.md).
+UI: [Speech and eating polish](docs/speech-polish-v1.md) adds a compact microphone, a tailed speech bubble and slower meals with correct coat colours.
+
+Voice: [Tiny Sprout](docs/creature-voice-v2.md) adds a stronger creature voice and short, playful replies. Sprout can chat using the existing Mac mini voice stack. Hold the small microphone button or BOOT to talk without leaving the pet screen. It uses Haiku and occasionally offers a little comment. Rename it, toggle Little chats and check Wi-Fi in Options. See [voice controls, setup and rollback](docs/voice-v1.md).
 
 A gentle touchscreen pet for the **Waveshare ESP32-S3-Touch-AMOLED-1.8 (original SH8601 / FT3168 board)**, built with ESP-IDF 5.3.5 and LVGL 9.
 

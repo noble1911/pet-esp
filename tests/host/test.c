@@ -101,7 +101,7 @@ int main(void)
     shot("home-idle");
     test_playing=true;advance(80);lv_obj_update_layout(s_root);
     assert(s_face==PIXEL_TALK);
-    assert(lv_obj_get_height(lv_obj_get_parent(s_caption_label))==70);
+    assert(lv_obj_get_height(lv_obj_get_parent(s_caption_label))==88);
     shot("home-speaking");test_playing=false;
 
     tap(180,245); advance(60);
@@ -112,7 +112,7 @@ int main(void)
     advance(700);
     assert(lv_obj_has_flag(s_pet_heart, LV_OBJ_FLAG_HIDDEN));
     tap(60,385);assert(s_view==FOOD);shot("food");
-    tap(73,350);tap(73,350);advance(1400);assert(s_view==PARTY);assert(pet_state_get()->evolution_progress==1);shot("party");
+    tap(73,350);tap(73,350);advance(FOOD_DURATION_MS+300);assert(s_view==PARTY);assert(pet_state_get()->evolution_progress==1);shot("party");
     tap(180,395);assert(s_view==HOME);tap(140,385);assert(s_view==GAMES);shot("games");tap(180,158);assert(s_view==CATCH);shot("play");
     for(int i=0;i<5;i++){lv_obj_update_layout(s_target);int x=lv_obj_get_x(s_target)+48,y=lv_obj_get_y(s_target)+48;tap(x,y);}
     assert(s_view==PARTY);assert(pet_state_get()->evolution_progress==2);
@@ -123,13 +123,16 @@ int main(void)
 
     advance(2500);tap(48,46);assert(s_view==HOME);advance(4000);assert(pet_state_get()->evolution_progress==3);
     show(SLEEP);advance(6100);assert(s_view==PARTY);assert(pet_state_get()->evolution_progress==4);
-    show(FOOD);tap(73,350);tap(48,46);advance(1400);
+    show(FOOD);tap(73,350);tap(48,46);advance(FOOD_DURATION_MS+300);
     assert(s_view==HOME);assert(pet_state_get()->evolution_progress==4);
     show(ALBUM);shot("album-locked");
     for(int i=0;i<26;i++)pet_state_play();show(ALBUM);shot("album");show(HOME);shot("grown-pet");
     show(HOME);shot("talk");
+    assert(s_mic && lv_obj_get_width(s_mic)==56 && lv_obj_get_height(s_mic)==48);
+    tap(90,342);assert(!s_talking && test_starts==0);
     tx=180;ty=342;pressed=true;advance(100);assert(s_talking);assert(s_view==HOME);
     assert(strstr(lv_label_get_text(s_caption_label),"listening"));
+    shot("mic-listening");
     lv_obj_t *room_root=s_root;
     pressed=false;advance(100);assert(!s_talking);assert(test_starts==1 && test_ends==1);
     assert(s_view==HOME && s_root==room_root && s_bars[0]);
@@ -189,12 +192,27 @@ int main(void)
         memcpy(held[food],s_pet_art.pixels,sizeof held[food]);
         char name[64];snprintf(name,sizeof name,"eat-%s-hold",(const char*[]){"apple","toast","cookie"}[food]);shot(name);
         tap(73+((food+1)%3)*108,350);assert(s_food==(pixel_food_t)food);
-        advance(240);snprintf(name,sizeof name,"eat-%s-bite",(const char*[]){"apple","toast","cookie"}[food]);shot(name);
+        advance(360);snprintf(name,sizeof name,"eat-%s-bite",(const char*[]){"apple","toast","cookie"}[food]);shot(name);
         assert(memcmp(held[food],s_pet_art.pixels,sizeof held[food]));
-        advance(1300);assert(s_view==PARTY && pet_state_get()->evolution_progress==before+1);
+        advance(FOOD_DURATION_MS+100);assert(s_view==PARTY && pet_state_get()->evolution_progress==before+1);
         advance(1500);assert(pet_state_get()->evolution_progress==before+1);
     }
     assert(memcmp(held[0],held[1],sizeof held[0]));assert(memcmp(held[1],held[2],sizeof held[0]));
+    show(FOOD);unsigned meal_stars=pet_state_get()->evolution_progress;
+    start_food(0,NULL);advance(1400);assert(s_view==FOOD && s_eating);
+    assert(pet_state_get()->evolution_progress==meal_stars);
+    advance(800);assert(s_view==FOOD && lv_obj_get_y(s_pet)==s_pet_y);shot("meal-settle");
+    advance(420);assert(s_view==FOOD && lv_obj_get_style_opa(s_root,0)<255);shot("meal-fade");
+    advance(300);assert(s_view==PARTY && pet_state_get()->evolution_progress==meal_stars+1);
+    advance(300);assert(lv_obj_get_style_opa(s_root,0)==255);shot("meal-celebration");
+    show(FOOD);meal_stars=pet_state_get()->evolution_progress;start_food(0,NULL);
+    advance(2400);tap(48,46);assert(s_view==HOME);
+    advance(FOOD_DURATION_MS);assert(pet_state_get()->evolution_progress==meal_stars);
+    assert(lv_obj_get_style_opa(s_root,0)==255);
+    if(getenv("PET_CAPTURE_MEAL")) {
+        show(FOOD);start_food(1,NULL);
+        for(unsigned i=0;i<35;i++) {char name[48];snprintf(name,sizeof name,"meal-motion-%02u",i);shot(name);advance(40);}
+    }
     // Immediate feedback works offline/muted; spoken reactions are bounded and
     // never queue behind manual speech. Snapshots still learn the latest action.
     show(HOME);test_voice=VOICE_READY;test_auto=true;s_muted=false;audio_set_volume(100);
@@ -202,7 +220,7 @@ int main(void)
     tap(180,245);assert(test_event==PET_EVENT_CUDDLE && test_reactions==reactions+1);
     tap(180,245);assert(test_reactions==reactions+1);
     assert(strstr(s_reaction_text,"cuddles") || strstr(s_reaction_text,"leaves") || strstr(s_reaction_text,"tickles"));
-    show(FOOD);tap(180,350);advance(1300);
+    show(FOOD);tap(180,350);advance(FOOD_DURATION_MS+100);
     assert(test_event==PET_EVENT_TOAST && strstr(s_reaction_text,"toast"));
     assert(test_reactions==reactions+1); // same 45-second speech cooldown
     show(HOME);s_next_reaction=0;s_muted=true;tap(180,245);assert(test_reactions==reactions+1);
@@ -217,7 +235,7 @@ int main(void)
     advance(600);tap(48,46);assert(test_event==PET_EVENT_CUDDLE);
     assert(pet_state_get()->evolution_progress==nap_before); // no fake wake-up reaction
     show(SLEEP);advance(6100);assert(test_event==PET_EVENT_NAP);shot("reaction-nap");
-    show(FOOD);tap(180,350);advance(1300);shot("reaction-toast");
+    show(FOOD);tap(180,350);advance(FOOD_DURATION_MS+100);shot("reaction-toast");
     // Peekaboo: wrong guesses and rapid taps are free, three actual finds earn
     // exactly one care star. Navigation cancels a pending reveal without reward.
     show(GAMES);tap(180,251);assert(s_view==HIDE);shot("peekaboo");
@@ -415,7 +433,7 @@ int main(void)
         show(FOOD);tap(180,424);assert(s_view==TREATS);tap(180,150+i*80);
         assert(s_view==TREATS && !s_eating);assert(strstr(lv_label_get_text(s_hint),"more star"));
         if(i==0)shot("treats-locked");
-        tap(48,46);assert(s_view==FOOD);tap(73,350);advance(1300);
+        tap(48,46);assert(s_view==FOOD);tap(73,350);advance(FOOD_DURATION_MS+100);
         assert(s_view==PARTY && pet_state_get()->evolution_progress==f->stars);
         char name[64];snprintf(name,sizeof name,"treat-unlock-%u",i);shot(name);
         tap(100,400);assert(s_view==TREATS);assert(pet_food_unlocked(pet_state_get(),i+3));
@@ -423,15 +441,15 @@ int main(void)
         // Leaving before the bite completes must not feed or produce an event.
         unsigned before_stars=pet_state_get()->evolution_progress;pet_event_t before_event=test_event;
         tap(180,150+i*80);assert(s_view==FOOD && s_eating && s_food==(pixel_food_t)(i+3));
-        tap(48,46);advance(1300);assert(s_view==HOME && pet_state_get()->evolution_progress==before_stars && test_event==before_event);
+        tap(48,46);advance(FOOD_DURATION_MS+100);assert(s_view==HOME && pet_state_get()->evolution_progress==before_stars && test_event==before_event);
         show(TREATS);tap(180,150+i*80);assert(s_eating);
         assert(test_sfx==(sfx_id_t)(SFX_CUPCAKE+i));advance(80);
         memcpy(special_frames[i],s_pet_art.pixels,sizeof special_frames[i]);
         snprintf(name,sizeof name,"treat-%u-hold",i);shot(name);
         tap(180,350);assert(s_food==(pixel_food_t)(i+3)); // rapid taps cannot switch snacks
-        advance(260);snprintf(name,sizeof name,"treat-%u-bite",i);shot(name);
+        advance(360);snprintf(name,sizeof name,"treat-%u-bite",i);shot(name);
         assert(memcmp(special_frames[i],s_pet_art.pixels,sizeof special_frames[i]));
-        advance(1300);assert(s_view==PARTY && test_event==food_events[i]);
+        advance(FOOD_DURATION_MS+100);assert(s_view==PARTY && test_event==food_events[i]);
         assert(pet_state_get()->evolution_progress==before_stars+1);
         assert(pet_state_get()->hunger==100 && pet_state_get()->happiness==50);
         advance(1400);assert(pet_state_get()->evolution_progress==before_stars+1);
@@ -442,20 +460,38 @@ int main(void)
     // Failed persistence cannot award stats/stars or claim a completed meal.
     saved=food_base;saved.evolution_progress=100;saved.hunger=40;saved.happiness=95;pet_state_init();
     Pet before_meal=*pet_state_get(),before_meal_disk=saved;pet_event_t before_event=test_event;
-    show(TREATS);tap(180,390);fail_save=true;advance(1400);
+    show(TREATS);tap(180,390);fail_save=true;advance(FOOD_DURATION_MS+300);
     assert(s_view==FOOD && !s_eating && strstr(lv_label_get_text(s_hint),"Could not save"));
+    assert(lv_obj_get_style_opa(s_root,0)==255);
     assert(!memcmp(pet_state_get(),&before_meal,sizeof before_meal));assert(!memcmp(&saved,&before_meal_disk,sizeof saved));
     assert(test_event==before_event);fail_save=false;
     assert(pet_state_eat(6));assert(pet_state_get()->hunger==80 && pet_state_get()->happiness==100);
     saved.evolution_progress=UINT32_MAX;pet_state_init();assert(pet_state_eat(6));
     assert(pet_state_get()->evolution_progress==UINT32_MAX && pet_state_get()->hunger==100);
-    // Coats still change fur, never the treat held in front of the pet.
-    for(unsigned i=0;i<4;i++) {
+    // Regression: eating used to leave a rectangular yellow belly on every
+    // coloured coat. Both frames must recolour that fur while retaining food.
+    for(unsigned food=0;food<PET_FOOD_COUNT;food++)for(unsigned pose=0;pose<2;pose++) {
         pixel_pet_art_t a,b;Pet p=*pet_state_get();p.stage=PET_STAGE_CHILD;p.genes[GENE_BODY_COLOR]=0;
-        pixel_pet_render(&a,&p,PIXEL_EAT,0,(pixel_food_t)(i+3));p.genes[GENE_BODY_COLOR]=5;
-        pixel_pet_render(&b,&p,PIXEL_EAT,0,(pixel_food_t)(i+3));
-        assert(memcmp(a.pixels,b.pixels,sizeof a.pixels));
-        for(int y=40;y<72;y++)for(int x=23;x<50;x++)assert(a.pixels[y*72+x]==b.pixels[y*72+x]);
+        pixel_pet_render(&a,&p,PIXEL_EAT,pose?4:0,(pixel_food_t)food);
+        for(unsigned coat=1;coat<6;coat++) {
+            p.genes[GENE_BODY_COLOR]=coat;
+            pixel_pet_render(&b,&p,PIXEL_EAT,pose?4:0,(pixel_food_t)food);
+            unsigned recoloured_belly=0;
+            for(int y=40;y<72;y++)for(int x=23;x<50;x++)
+                recoloured_belly+=a.pixels[y*72+x]!=b.pixels[y*72+x];
+            assert(recoloured_belly>20);
+            // Food centres and highlights are stable, including golden toast,
+            // pancakes, cake sponge and the cupcake's yellow star topper.
+            for(int y=51;y<=58;y++)for(int x=32;x<=38;x++)
+                assert(a.pixels[y*72+x]==b.pixels[y*72+x]);
+            if(food==3)assert(a.pixels[46*72+35]==b.pixels[46*72+35]);
+        }
+    }
+    saved.genes[GENE_BODY_COLOR]=5;pet_state_init();
+    for(unsigned food=0;food<PET_FOOD_COUNT;food++) {
+        show(FOOD);start_food(food,NULL);advance(100);
+        char name[64];snprintf(name,sizeof name,"blue-food-%u-hold",food);shot(name);
+        advance(650);snprintf(name,sizeof name,"blue-food-%u-bite",food);shot(name);
     }
     saved=food_base;pet_state_init();show(HOME);
     // Every saved gene can be explored without applying the preview or saving.
@@ -524,7 +560,7 @@ int main(void)
     pet_state_tick(pet_state_get()->last_tick+179);assert(pet_state_get()->hunger==100);
     show(HOME);shot("fresh-pet");
     saved = snapshot; pet_state_init();
-    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; all eight traits, preview wraparound and unchanged genes/save; milestone foods, distinct poses, cancel, failed saves and capped bonuses");
+    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; all eight traits, preview wraparound and unchanged genes/save; milestone foods, six coats without yellow eating patches, paced meals, fades, compact mic, cancel, failed saves and capped bonuses");
     lv_deinit();
     return 0;
 }

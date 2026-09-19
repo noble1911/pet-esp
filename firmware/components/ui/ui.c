@@ -20,13 +20,17 @@
 #define GOLD 0xffcf57
 #define PINK 0xf3a8b6
 #define BLUE 0xa9dbef
+#define FOOD_BITE_MS 650
+#define FOOD_SETTLE_MS 2100
+#define FOOD_DURATION_MS 2800
+#define FOOD_FADE_MS 200
 
 typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT, TREATS, REWARDS } View;
 static View s_view;
 static lv_obj_t *s_root, *s_pet, *s_bars[4], *s_target, *s_counter;
 static lv_obj_t *s_dots[5], *s_hint, *s_sleep_bar;
 static lv_obj_t *s_volume_label, *s_volume_slider;
-static lv_obj_t *s_pet_image, *s_pet_heart;
+static lv_obj_t *s_pet_image, *s_pet_heart, *s_mic;
 static lv_obj_t *s_voice_status, *s_caption_label, *s_connection, *s_name_input, *s_name_error;
 static bool s_talking, s_boot_down, s_boot_raw;
 static uint32_t s_talk_started, s_boot_changed, s_connection_tick, s_voice_until;
@@ -36,7 +40,7 @@ static char s_reaction_text[96];
 static pixel_pet_art_t s_pet_art;
 static pixel_face_t s_face;
 static pixel_food_t s_food;
-static uint32_t s_started, s_hop_until, s_last_tick;
+static uint32_t s_started, s_hop_until, s_last_tick, s_party_fade_until;
 static unsigned s_hits, s_last_target;
 static bool s_eating, s_muted;
 static unsigned s_profile_page, s_trait_gene, s_trait_variant;
@@ -145,6 +149,36 @@ static void reset_cb(lv_event_t *e)
     voice_cancel();audio_stop_tune();
     esp_restart();
 }
+// One bubble treatment for home speech and care celebrations. The root owns
+// the tail and body together so hiding a caption also hides its decoration.
+static void speech_bubble(int y)
+{
+    lv_obj_t *bubble=shape(s_root,24,y,320,88,CREAM,0);
+    lv_obj_set_style_bg_opa(bubble,LV_OPA_TRANSP,0);
+    lv_obj_t *body=shape(bubble,0,0,320,76,CREAM,0);
+    lv_obj_set_style_radius(body,12,0);
+    lv_obj_set_style_border_width(body,2,0);lv_obj_set_style_border_color(body,lv_color_hex(INK),0);
+    lv_obj_set_style_shadow_color(body,lv_color_hex(0x875e72),0);
+    lv_obj_set_style_shadow_opa(body,LV_OPA_20,0);lv_obj_set_style_shadow_width(body,4,0);
+    lv_obj_set_style_shadow_ofs_y(body,3,0);
+    // Stepped tail keeps the illustrated toy's pixel character.
+    shape(bubble,145,74,18,5,INK,0);shape(bubble,149,79,14,5,INK,0);shape(bubble,155,84,8,4,INK,0);
+    shape(bubble,147,72,14,5,CREAM,0);shape(bubble,151,77,10,5,CREAM,0);shape(bubble,157,82,4,3,CREAM,0);
+    s_caption_label=label(bubble,"",12,11,296,false);
+    lv_obj_set_height(s_caption_label,LV_SIZE_CONTENT);lv_obj_set_style_max_height(s_caption_label,52,0);
+    lv_label_set_long_mode(s_caption_label,LV_LABEL_LONG_SCROLL);lv_obj_align(s_caption_label,LV_ALIGN_CENTER,0,-6);
+    lv_obj_add_flag(bubble,LV_OBJ_FLAG_HIDDEN);
+}
+static void microphone(lv_obj_t *parent)
+{
+    lv_obj_t *capsule=shape(parent,21,6,14,23,INK,0);lv_obj_set_style_radius(capsule,7,0);
+    for(int y=11;y<23;y+=5)shape(parent,24,y,8,2,CREAM,0);
+    static const lv_point_precise_t points[]={{17,20},{17,25},{20,30},{28,33},{36,30},{39,25},{39,20}};
+    lv_obj_t *cup=lv_line_create(parent);lv_line_set_points(cup,points,7);
+    lv_obj_set_style_line_color(cup,lv_color_hex(INK),0);lv_obj_set_style_line_width(cup,3,0);
+    lv_obj_set_style_line_rounded(cup,true,0);lv_obj_remove_flag(cup,LV_OBJ_FLAG_CLICKABLE);
+    shape(parent,26,32,4,7,INK,0);shape(parent,19,39,18,3,INK,0);
+}
 static void header_to(const char *title,View back)
 {
     lv_obj_t *b=button(s_root,24,22,48,48,0xffffff,nav_cb,back);
@@ -199,7 +233,7 @@ static void finish(int action)
 {
     View completed=s_view;
     if(action==0 && !pet_state_eat((unsigned)s_food)) {
-        s_eating=false;s_hop_until=0;
+        s_eating=false;s_hop_until=0;lv_obj_set_style_opa(s_root,LV_OPA_COVER,0);
         lv_label_set_text(s_hint,"Could not save. Please try again.");return;
     }
     if(action==1) pet_state_play();
@@ -209,6 +243,10 @@ static void finish(int action)
     for(unsigned i=0;i<PET_DECORATION_COUNT;i++)if(earned==pet_decoration_threshold(i))gift=true;
     audio_play(gift || pet_food_milestone(earned)>=0?SFX_GIFT:earned<=90 && earned%5==0?SFX_STICKER:action==3?SFX_BATH:SFX_HAPPY);
     show(PARTY);
+    if(completed==FOOD) {
+        s_party_fade_until=lv_tick_get()+FOOD_FADE_MS;
+        lv_obj_set_style_opa(s_root,LV_OPA_TRANSP,0);
+    }
     if(action==0) {
         static const pet_event_t events[]={PET_EVENT_APPLE,PET_EVENT_TOAST,PET_EVENT_COOKIE,
             PET_EVENT_CUPCAKE,PET_EVENT_PANCAKES,PET_EVENT_JELLY,PET_EVENT_CAKE};
@@ -226,7 +264,7 @@ static void start_food(unsigned food,lv_obj_t *button_obj)
 {
     if(s_eating || !pet_food_unlocked(pet_state_get(),food)) return;
     s_food=(pixel_food_t)food;
-    s_eating=true;s_started=lv_tick_get();s_hop_until=s_started+1200;
+    s_eating=true;s_started=lv_tick_get();s_hop_until=s_started+FOOD_SETTLE_MS;
     lv_label_set_text(s_hint,food<3?"Yum yum!":pet_special_food(food-3)->name);
     if(button_obj)lv_obj_set_style_bg_color(button_obj,lv_color_hex(GOLD),0);
     static const sfx_id_t sounds[]={SFX_APPLE,SFX_TOAST,SFX_COOKIE,SFX_CUPCAKE,SFX_PANCAKES,SFX_JELLY,SFX_CAKE};
@@ -750,19 +788,14 @@ static void make_home(void)
     lv_obj_set_style_bg_color(s_keepsake_label,lv_color_hex(CREAM),0);
     lv_obj_set_style_bg_opa(s_keepsake_label,LV_OPA_COVER,0);
     lv_obj_add_flag(s_keepsake_label,LV_OBJ_FLAG_HIDDEN);
-    // A fixed, generous hold target stays under the pet. Captions appear only
-    // during a conversation, leaving the window visible during ordinary play.
-    lv_obj_t *talk=button(s_root,24,320,320,44,CREAM,NULL,0);
-    s_hint=label(talk,"Hold to talk to Sprout",4,13,308,false);
-    s_voice_status=s_hint;
-    lv_obj_add_event_cb(talk,talk_cb,LV_EVENT_PRESSED,NULL);
-    lv_obj_add_event_cb(talk,talk_cb,LV_EVENT_RELEASED,NULL);
-    lv_obj_add_event_cb(talk,talk_cb,LV_EVENT_PRESS_LOST,NULL);
-    lv_obj_t *caption=button(s_root,24,67,320,70,CREAM,NULL,0);
-    lv_obj_remove_flag(caption,LV_OBJ_FLAG_CLICKABLE);
-    s_caption_label=label(caption,"",8,9,300,false);
-    lv_obj_set_height(s_caption_label,52);lv_label_set_long_mode(s_caption_label,LV_LABEL_LONG_SCROLL);
-    lv_obj_add_flag(caption,LV_OBJ_FLAG_HIDDEN);
+    // Compact icon, with a finger-sized target and the same hold/release input.
+    s_mic=button(s_root,156,316,56,48,CREAM,NULL,0);
+    lv_obj_set_style_radius(s_mic,18,0);
+    lv_obj_set_style_bg_color(s_mic,lv_color_hex(MINT),LV_STATE_PRESSED);microphone(s_mic);
+    lv_obj_add_event_cb(s_mic,talk_cb,LV_EVENT_PRESSED,NULL);
+    lv_obj_add_event_cb(s_mic,talk_cb,LV_EVENT_RELEASED,NULL);
+    lv_obj_add_event_cb(s_mic,talk_cb,LV_EVENT_PRESS_LOST,NULL);
+    speech_bubble(64);
     lv_obj_t *album=button(s_root,24,249,54,51,CREAM,nav_cb,REWARDS); icon(album,4,-2,1);
     lv_obj_t *settings=button(s_root,294,250,50,48,CREAM,nav_cb,SETTINGS);
     label(settings,LV_SYMBOL_SETTINGS,0,11,50,true);
@@ -782,7 +815,7 @@ static void show(View view)
 {
     if(s_view==MUSIC && view!=MUSIC) {audio_stop_tune();if(s_music_choice==3)voice_cancel();}
     if(s_talking && !s_boot_down)talk_end();
-    s_voice_status=NULL;s_caption_label=NULL;s_connection=NULL;s_name_input=NULL;s_name_error=NULL;
+    s_mic=NULL;s_voice_status=NULL;s_caption_label=NULL;s_connection=NULL;s_name_input=NULL;s_name_error=NULL;
     // Single owner: no screen-specific timers or callbacks survive the root.
     s_volume_label=NULL; s_volume_slider=NULL;
     s_keepsake_until=0;s_keepsake_label=NULL;memset(s_keepsakes,0,sizeof s_keepsakes);
@@ -793,7 +826,7 @@ static void show(View view)
     for(int i=0;i<4;i++) s_bars[i]=NULL;
     for(int i=0;i<5;i++) s_dots[i]=NULL;
     if(s_root) lv_obj_delete(s_root);
-    s_view=view; s_started=lv_tick_get(); s_hits=0; s_eating=false; s_hop_until=0;s_reaction_until=0;
+    s_view=view; s_started=lv_tick_get(); s_hits=0; s_eating=false; s_hop_until=0;s_reaction_until=0;s_party_fade_until=0;
     s_root=shape(lv_screen_active(),0,0,368,448,CREAM,0);
     if(view==HOME) { make_home(); return; }
     if(view==REWARDS) {make_rewards();
@@ -870,10 +903,7 @@ static void show(View view)
         } else {
             lv_obj_t *b=button(s_root,74,376,220,48,MINT,home_cb,0);label(b,"Home " LV_SYMBOL_HOME,0,11,220,true);
         }
-        lv_obj_t *caption=button(s_root,24,77,320,64,CREAM,NULL,0);
-        lv_obj_remove_flag(caption,LV_OBJ_FLAG_CLICKABLE);
-        s_caption_label=label(caption,"",8,8,300,false);lv_obj_set_height(s_caption_label,48);
-        lv_label_set_long_mode(s_caption_label,LV_LABEL_LONG_SCROLL);lv_obj_add_flag(caption,LV_OBJ_FLAG_HIDDEN);
+        speech_bubble(77);
         s_voice_status=label(s_root,"",24,356,320,false);
         s_hop_until=lv_tick_get()+1800;
     } else if(view==ALBUM) {
@@ -979,7 +1009,13 @@ static void frame(lv_timer_t *t)
         if(s_hint && s_view==CATCH)lv_label_set_text(s_hint,"Tap each golden star");
         if(s_hint && s_view==BATH)lv_label_set_text(s_hint,"Pop all five bubbles");
     }
-    if(s_voice_status) {
+    if(s_mic) {
+        bool listening=vs==VOICE_LISTENING || s_talking;
+        lv_obj_set_style_bg_color(s_mic,lv_color_hex(listening?MINT:vs==VOICE_THINKING?BLUE:CREAM),0);
+        lv_obj_set_style_border_color(s_mic,lv_color_hex(listening?0x348768:INK),0);
+        lv_obj_set_style_border_width(s_mic,listening?3:2,0);
+    }
+    if(s_caption_label) {
         char caption[512];voice_caption(caption,sizeof(caption));
         bool speaking=vs==VOICE_SPEAKING || audio_voice_playing();
         bool busy=vs==VOICE_LISTENING || vs==VOICE_THINKING || speaking;
@@ -991,19 +1027,19 @@ static void frame(lv_timer_t *t)
         if(vs==VOICE_LISTENING) {
             int level=audio_mic_level();
             lv_label_set_text(s_caption_label,level>300?"I'm listening...\nI can hear your voice!":"I'm listening...\nSpeak close to me");
-            lv_label_set_text(s_voice_status,"Let go when you're done");
+            if(s_voice_status)lv_label_set_text(s_voice_status,"Let go when you're done");
         } else if(vs==VOICE_THINKING) {
             lv_label_set_text(s_caption_label,local_reaction?s_reaction_text:"One little moment...");
-            lv_label_set_text(s_voice_status,"Thinking...");
+            if(s_voice_status)lv_label_set_text(s_voice_status,"Thinking...");
         } else if(local_reaction && !speaking) {
             lv_label_set_text(s_caption_label,s_reaction_text);
-            lv_label_set_text(s_voice_status,s_view==HOME?"Hold here or BOOT to talk":"Hold BOOT to talk");
+            if(s_voice_status)lv_label_set_text(s_voice_status,s_view==HOME?"Hold here or BOOT to talk":"Hold BOOT to talk");
         } else if(caption[0] && (int32_t)(s_voice_until-now)>0) {
             if(strcmp(lv_label_get_text(s_caption_label),caption))lv_label_set_text(s_caption_label,caption);
-            lv_label_set_text(s_voice_status,speaking?"Chatting with you":s_view==HOME?"Hold here or BOOT to reply":"Hold BOOT to reply");
+            if(s_voice_status)lv_label_set_text(s_voice_status,speaking?"Chatting with you":s_view==HOME?"Hold here or BOOT to reply":"Hold BOOT to reply");
         } else {
             char greeting[80];snprintf(greeting,sizeof(greeting),s_view==HOME?"Hold to talk to %s":"Hold BOOT to talk to %s",pet_state_get()->name);
-            if(strcmp(lv_label_get_text(s_voice_status),greeting))lv_label_set_text(s_voice_status,greeting);
+            if(s_voice_status && strcmp(lv_label_get_text(s_voice_status),greeting))lv_label_set_text(s_voice_status,greeting);
         }
     }
     if(s_view==MUSIC) {
@@ -1027,7 +1063,7 @@ static void frame(lv_timer_t *t)
         bool hopping=(int32_t)(s_hop_until-now)>0;
         int dy=hopping ? -(int)(fabsf(sinf(now/90.0f))*13) : (int)(sinf(now/(s_view == SLEEP ? 1100.0f : 650.0f))*3);
         if(s_view==SLEEP || s_view==BATH || s_view==HIDE)dy=0;
-        else if(s_eating)dy=(elapsed/160)%2?-3:0;
+        else if(s_eating)dy=elapsed<FOOD_SETTLE_MS && elapsed>=FOOD_BITE_MS ? -(int)(fabsf(sinf(elapsed/160.0f))*3) : 0;
         lv_obj_set_y(s_pet,s_pet_y+dy);
         bool asleep=s_view==SLEEP;
         bool delighted=s_view==PARTY || (s_view==HIDE && s_reveal_until) || (hopping && !s_eating && !asleep && s_view!=BATH);
@@ -1040,13 +1076,22 @@ static void frame(lv_timer_t *t)
             s_face=keepsake_actions[s_keepsake_choice].pose;
             lv_obj_set_y(s_pet,s_pet_y+(s_face==PIXEL_PLAY?-(int)(fabsf(sinf(now/120.0f))*10):0));
         }
-        pixel_pet_render(&s_pet_art,pet_state_get(),s_face,s_eating?elapsed/160:now/180,
+        pixel_pet_render(&s_pet_art,pet_state_get(),s_face,s_eating?(elapsed<FOOD_BITE_MS?0:3):now/180,
                          keepsake && s_keepsake_choice==0?PIXEL_APPLE:s_food);
         lv_obj_invalidate(s_pet_image);
         if(hopping && !s_eating && !asleep && s_view!=HIDE) lv_obj_remove_flag(s_pet_heart,LV_OBJ_FLAG_HIDDEN);
         else lv_obj_add_flag(s_pet_heart,LV_OBJ_FLAG_HIDDEN);
     }
-    if(s_view==FOOD && s_eating && elapsed>=1200) finish(0);
+    if(s_view==FOOD && s_eating) {
+        if(elapsed>=FOOD_DURATION_MS)finish(0);
+        else if(elapsed>FOOD_DURATION_MS-FOOD_FADE_MS)
+            lv_obj_set_style_opa(s_root,(lv_opa_t)((FOOD_DURATION_MS-elapsed)*255/FOOD_FADE_MS),0);
+    }
+    if(s_view==PARTY && s_party_fade_until) {
+        int32_t remaining=(int32_t)(s_party_fade_until-now);
+        lv_obj_set_style_opa(s_root,remaining>0?(lv_opa_t)((FOOD_FADE_MS-remaining)*255/FOOD_FADE_MS):LV_OPA_COVER,0);
+        if(remaining<=0)s_party_fade_until=0;
+    }
     if(s_view==SLEEP) {
         lv_bar_set_value(s_sleep_bar,(int)(elapsed*100/6000),LV_ANIM_OFF);
         if(elapsed>=6000) finish(2);
