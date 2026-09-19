@@ -19,6 +19,9 @@ int power_battery_percent(void) { return 85; }
 bool power_is_charging(void) { return true; }
 void audio_play(sfx_id_t f) { (void)f; }
 void audio_set_muted(bool m) { (void)m; }
+static int test_volume=35;
+void audio_set_volume(int v) { test_volume=v; }
+int audio_get_volume(void) { return test_volume; }
 static uint32_t pixels[368*448];
 static int tx,ty; static bool pressed;
 static void read_touch(lv_indev_t *i,lv_indev_data_t *d) { (void)i; d->point.x=tx;d->point.y=ty;d->state=pressed?LV_INDEV_STATE_PRESSED:LV_INDEV_STATE_RELEASED; }
@@ -79,7 +82,14 @@ int main(void)
     assert(s_view==HOME);assert(pet_state_get()->evolution_progress==4);
     show(ALBUM);shot("album-locked");
     for(int i=0;i<26;i++)pet_state_play();show(ALBUM);shot("album");show(HOME);shot("grown-pet");
-    show(SETTINGS);shot("settings");tap(180,180);assert(s_muted);
+    show(SETTINGS);shot("settings");
+    tap(245,292); assert(audio_get_volume()>65 && audio_get_volume()<85);
+    int chosen_volume=audio_get_volume();
+    tap(180,180);assert(s_muted);assert(audio_get_volume()==chosen_volume);
+    tap(58,292);assert(audio_get_volume()==0);
+    tap(310,292);assert(audio_get_volume()==100);
+    show(HOME);show(SETTINGS);assert(lv_slider_get_value(s_volume_slider)==100);
+    audio_set_volume(35);show(SETTINGS);
     // Repeated navigation catches dangling object pointers/timers.
     for(int i=0;i<100;i++){show((View)(i%8));advance(80);show(HOME);advance(80);}
     // Review every coat and all five stages with production geometry.

@@ -25,7 +25,7 @@ This uses a separate verified binary bundle and does not erase NVS. For the old 
 - Tap your pet for a cuddle and a little hop.
 - Each completed activity earns one saved star. Collect six stickers, one every five stars, via the star button at home. Growth adds a tuft, flower, scarf and golden badge at 10, 30, 60 and 100 stars.
 - The matching coloured bars show food, happiness, energy and cleanliness. They also open their activities.
-- The cog opens battery information and the sound toggle. There is no destructive reset button in the child-facing UI.
+- The cog opens battery information, the sound toggle and a 0–100% volume slider. Releasing the slider previews the level unless muted. Sound settings are session-local; volume starts at 35% after restart. There is no destructive reset button in the child-facing UI.
 
 Needs decay gently while powered on (one point per 3 / 4 / 5 / 6 minutes), stop at 20, and pause while powered off. There is no death, lost progress or punishment for leaving the toy. Each care action restores 30 points, capped at 100.
 

@@ -10,6 +10,7 @@
 static QueueHandle_t s_queue;
 static esp_codec_dev_handle_t s_codec;
 static atomic_bool s_muted;
+static atomic_int s_volume = 35;
 static void sound_task(void *arg)
 {
     (void)arg; sfx_id_t fx; int16_t pcm[256];
@@ -17,7 +18,16 @@ static void sound_task(void *arg)
         if(xQueueReceive(s_queue,&fx,portMAX_DELAY)!=pdTRUE) continue;
         if(atomic_load(&s_muted)) continue;
         int hz=fx==SFX_HAPPY?880:fx==SFX_EMOTE?660:740;
+        int applied_volume = -1;
         for(int block=0;block<8;block++) {
+            if (atomic_load(&s_muted)) break;
+            int volume = atomic_load(&s_volume);
+            if (volume == 0) break;
+            // Only the audio worker touches codec volume; UI drags cannot race I2S.
+            if (volume != applied_volume) {
+                esp_codec_dev_set_out_vol(s_codec, volume);
+                applied_volume = volume;
+            }
             for(int i=0;i<256;i++) {
                 int n=block*256+i;
                 float envelope=sinf(3.14159265f*n/2048);
@@ -39,3 +49,10 @@ void audio_init(void)
 }
 void audio_play(sfx_id_t sfx) { if(s_queue && !atomic_load(&s_muted)) xQueueSend(s_queue,&sfx,0); }
 void audio_set_muted(bool muted) { atomic_store(&s_muted,muted); }
+void audio_set_volume(int percent)
+{
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    atomic_store(&s_volume, percent);
+}
+int audio_get_volume(void) { return atomic_load(&s_volume); }

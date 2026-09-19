@@ -22,6 +22,7 @@ typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS } View;
 static View s_view;
 static lv_obj_t *s_root, *s_pet, *s_bars[4], *s_target, *s_counter;
 static lv_obj_t *s_dots[5], *s_hint, *s_sleep_bar;
+static lv_obj_t *s_volume_label, *s_volume_slider;
 static lv_obj_t *s_pet_image, *s_pet_heart;
 static pixel_pet_art_t s_pet_art;
 static pixel_face_t s_face;
@@ -184,6 +185,15 @@ static void mute_cb(lv_event_t *e)
 {
     (void)e; s_muted=!s_muted; audio_set_muted(s_muted); show(SETTINGS);
 }
+static void volume_cb(lv_event_t *e)
+{
+    audio_set_volume(lv_slider_get_value(lv_event_get_target(e)));
+    char text[32];
+    snprintf(text, sizeof(text), "Volume: %d%%", audio_get_volume());
+    lv_label_set_text(s_volume_label, text);
+    // One preview on release, rather than a queue of chirps while dragging.
+    if (lv_event_get_code(e) == LV_EVENT_RELEASED) audio_play(SFX_FEED);
+}
 static void make_home(void)
 {
     meadow();
@@ -218,6 +228,7 @@ static void make_home(void)
 static void show(View view)
 {
     // Single owner: no screen-specific timers or callbacks survive the root.
+    s_volume_label=NULL; s_volume_slider=NULL;
     s_pet=NULL; s_target=NULL; s_hint=NULL; s_counter=NULL; s_sleep_bar=NULL;
     for(int i=0;i<4;i++) s_bars[i]=NULL;
     for(int i=0;i<5;i++) s_dots[i]=NULL;
@@ -290,7 +301,25 @@ static void show(View view)
         else snprintf(b,sizeof(b),"Battery: %d%%%s",batt,power_is_charging()?" (charging)":"");
         label(s_root,b,24,111,320,false);
         lv_obj_t *m=button(s_root,54,157,260,58,MINT,mute_cb,0); label(m,s_muted?"Sound off":"Sound on",0,16,260,true);
-        label(s_root,"No losing. No rushing.\nYour pet is safe while you are away.\n\nCare earns stars and stickers.\nGrowth: 10, 30, 60, 100 stars.\n\nProgress saves automatically.",30,248,308,false);
+        snprintf(b, sizeof(b), "Volume: %d%%", audio_get_volume());
+        s_volume_label=label(s_root,b,40,237,288,false);
+        s_volume_slider=lv_slider_create(s_root);
+        lv_obj_set_pos(s_volume_slider,58,284); lv_obj_set_size(s_volume_slider,252,16);
+        lv_slider_set_range(s_volume_slider,0,100);
+        lv_slider_set_value(s_volume_slider,audio_get_volume(),LV_ANIM_OFF);
+        lv_obj_set_ext_click_area(s_volume_slider,18);
+        lv_obj_set_style_bg_color(s_volume_slider,lv_color_hex(0xe9dfcf),LV_PART_MAIN);
+        lv_obj_set_style_bg_color(s_volume_slider,lv_color_hex(0x93deaf),LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(s_volume_slider,lv_color_hex(INK),LV_PART_KNOB);
+        lv_obj_set_style_pad_all(s_volume_slider,10,LV_PART_KNOB);
+        lv_obj_set_style_radius(s_volume_slider,0,LV_PART_MAIN);
+        lv_obj_set_style_radius(s_volume_slider,0,LV_PART_INDICATOR);
+        lv_obj_set_style_radius(s_volume_slider,3,LV_PART_KNOB);
+        lv_obj_add_event_cb(s_volume_slider,volume_cb,LV_EVENT_VALUE_CHANGED,NULL);
+        lv_obj_add_event_cb(s_volume_slider,volume_cb,LV_EVENT_RELEASED,NULL);
+        label(s_root,"Quiet",38,318,72,false);
+        label(s_root,"Loud",258,318,72,false);
+        label(s_root,"No losing. No rushing.\nCare earns stars and stickers.\nPet progress saves automatically.",30,367,308,false);
     }
 }
 static void refresh(void)
