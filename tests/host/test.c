@@ -5,12 +5,14 @@
 #include "nvs.h"
 #include "../../firmware/components/ui/ui.c"
 static mp_state_t test_mp;
+static unsigned test_mp_chat_invites;
 static unsigned test_mp_open,test_mp_close,test_mp_passes,test_mp_accepts,test_mp_declines,test_mp_invites,test_mp_agains,test_mp_acks;
 void multiplayer_init(void) {}
 void multiplayer_open(const Pet *p) {assert(p);test_mp_open++;}
 void multiplayer_close(void) {test_mp_close++;}
 void multiplayer_snapshot(mp_state_t *out) {*out=test_mp;}
 bool multiplayer_invite(const char *p) {assert(*p);test_mp_invites++;return true;}
+bool multiplayer_chat_invite(const char *p) {assert(*p);test_mp_chat_invites++;return true;}
 bool multiplayer_accept(const char *p) {assert(*p);test_mp_accepts++;return true;}
 bool multiplayer_decline(const char *p) {assert(*p);test_mp_declines++;return true;}
 bool multiplayer_pass(const char *p,unsigned seq) {assert(*p && seq==test_mp.seq);test_mp_passes++;return true;}
@@ -63,7 +65,8 @@ void voice_cancel(void) {}
 void voice_check(void) {}
 voice_state_t voice_get_state(void) {return test_voice;}
 void voice_status(char *s,size_t n) {snprintf(s,n,"Wi-Fi: Connected\nHome network\nIP: 192.168.1.42\nSignal: -52 dBm\nVoice server: Ready\nCheck passed: server replied");}
-void voice_caption(char *s,size_t n) {snprintf(s,n,"Hello! I'm Sprout. Shall we play?");}
+static const char *test_caption="Hello! I'm Sprout. Shall we play?";
+void voice_caption(char *s,size_t n) {snprintf(s,n,"%s",test_caption);}
 bool voice_boot_pressed(void) {return test_boot;}
 static bool test_playing;
 bool audio_voice_playing(void) {return test_playing;}
@@ -72,10 +75,15 @@ int audio_mic_level(void) {return 800;}
 static int test_volume=100;
 void audio_set_volume(int v) { test_volume=v; }
 int audio_get_volume(void) { return test_volume; }
-static uint32_t pixels[368*448];
+static uint32_t pixels[368*448],partial_pixels[368*40];
+static bool partial_render;
 static int tx,ty; static bool pressed;
 static void read_touch(lv_indev_t *i,lv_indev_data_t *d) { (void)i; d->point.x=tx;d->point.y=ty;d->state=pressed?LV_INDEV_STATE_PRESSED:LV_INDEV_STATE_RELEASED; }
-static void flush(lv_display_t *d,const lv_area_t *a,uint8_t *p) { (void)a;(void)p;lv_display_flush_ready(d); }
+static void flush(lv_display_t *d,const lv_area_t *a,uint8_t *p) {
+    if(partial_render)for(int y=a->y1;y<=a->y2;y++)
+        memcpy(&pixels[y*368+a->x1],p+(y-a->y1)*(a->x2-a->x1+1)*4,(a->x2-a->x1+1)*4);
+    lv_display_flush_ready(d);
+}
 static void advance(unsigned ms) { for(unsigned n=0;n<ms;n+=20) { lv_tick_inc(20);lv_timer_handler(); } }
 static void tap(int x,int y) { lv_obj_update_layout(s_root);advance(40);tx=x;ty=y;pressed=true;advance(60);pressed=false;advance(60); }
 static void shot(const char *name) {
@@ -113,7 +121,10 @@ int main(void)
     saved.genes[GENE_BODY_COLOR]=0; pet_state_init();
     lv_init();lv_display_t *d=lv_display_create(368,448);
     lv_display_set_color_format(d,LV_COLOR_FORMAT_XRGB8888);
-    lv_display_set_buffers(d,pixels,NULL,sizeof pixels,LV_DISPLAY_RENDER_MODE_DIRECT);lv_display_set_flush_cb(d,flush);
+    partial_render=getenv("PET_PARTIAL_RENDER")!=NULL;
+    if(partial_render)lv_display_set_buffers(d,partial_pixels,NULL,sizeof partial_pixels,LV_DISPLAY_RENDER_MODE_PARTIAL);
+    else lv_display_set_buffers(d,pixels,NULL,sizeof pixels,LV_DISPLAY_RENDER_MODE_DIRECT);
+    lv_display_set_flush_cb(d,flush);
     lv_indev_t *input=lv_indev_create();lv_indev_set_type(input,LV_INDEV_TYPE_POINTER);lv_indev_set_read_cb(input,read_touch);
     ui_init();test_power_press=true;advance(160);assert(s_view==HOME && test_power_offs==0);shot("home");
     s_voice_until=0;advance(80);lv_obj_update_layout(s_root);
@@ -121,8 +132,20 @@ int main(void)
     shot("home-idle");
     test_playing=true;advance(80);lv_obj_update_layout(s_root);
     assert(s_face==PIXEL_TALK);
-    assert(lv_obj_get_height(lv_obj_get_parent(s_caption_label))==88);
-    shot("home-speaking");test_playing=false;
+    assert(lv_obj_get_height(lv_obj_get_parent(s_caption_label))==94);
+    shot("home-speaking");
+    // Border/background must survive incremental redraws while the pet animates.
+    for(unsigned frame=0;frame<24;frame++) {
+        test_caption=frame%2?"Hello! I have a little story about a picnic, some toast, a friendly dragon, and an enormous imaginary cloud castle. What an adventure!":"A tiny picnic sounds lovely. Save a little toast for me!";
+        advance(80);lv_refr_now(d);
+        assert((pixels[66*368+184]&0xffffff)==INK);
+        assert((pixels[72*368+184]&0xffffff)==CREAM);
+        uint32_t before[320*94];
+        for(unsigned row=0;row<94;row++)memcpy(before+row*320,pixels+(64+row)*368+24,320*4);
+        lv_obj_invalidate(s_root);lv_refr_now(d);
+        for(unsigned row=0;row<94;row++)assert(!memcmp(before+row*320,pixels+(64+row)*368+24,320*4));
+    }
+    test_caption="Hello! I'm Sprout. Shall we play?";test_playing=false;
 
     tap(180,245); advance(60);
     assert((int32_t)(s_hop_until-lv_tick_get()) > 0);
@@ -509,6 +532,25 @@ int main(void)
         test_mp=(mp_state_t){0};s_album_page=3;show(ALBUM);shot("buddy-sticker");tap(76,180);
         assert(s_view==HOME && s_keepsake_until && pet_wall_sticker(pet_state_get())==18);shot("buddy-sticker-play");
         saved=before;pet_state_init();show(HOME);
+        unsigned chat_stars=pet_state_get()->evolution_progress;
+        test_mp=(mp_state_t){.connected=true,.phase=MP_LOBBY,.count=1};
+        test_mp.peers[0]=(mp_peer_t){.user="friend-device",.id="0000000000000042",.name="Larry",.character=6,.stage=3,.chat=true};
+        show(MULTIPLAYER);tap(270,212);assert(s_mp_chat_mode);shot("pet-chat-lobby");
+        tap(180,300);assert(test_mp_chat_invites==1);
+        test_mp.peer=test_mp.peers[0];test_mp.chat=true;test_mp.phase=MP_INCOMING;strcpy(test_mp.invite,"chat-invite");advance(140);
+        shot("pet-chat-invitation");unsigned accepts=test_mp_accepts;tap(180,338);assert(test_mp_accepts==accepts+1);
+        test_mp.phase=MP_PLAYING;strcpy(test_mp.room,"chat-room");advance(140);assert(s_mp_caption && !s_mp_ball);shot("pet-chat-thinking");
+        test_mp.seq=1;test_mp.speaking=true;test_mp.my_turn=true;strcpy(test_mp.text,"My human and I could imagine a lovely picnic.");advance(160);
+        assert(strstr(lv_label_get_text(s_mp_caption),"picnic"));shot("pet-chat-speaking");
+        test_mp.seq=2;test_mp.my_turn=false;strcpy(test_mp.text,"A picnic sounds better than another meeting. Save me toast!");advance(160);shot("pet-chat-listening");
+        assert(strstr(lv_label_get_text(s_hint),"Larry"));
+        test_mp.seq=8;test_mp.speaking=false;test_mp.phase=MP_FINISHED;advance(160);
+        assert(!lv_obj_has_flag(s_mp_again,LV_OBJ_FLAG_HIDDEN));shot("pet-chat-finished");
+        unsigned agains=test_mp_agains;tap(260,416);assert(test_mp_agains==agains+1);
+        test_mp.again=true;advance(160);assert(strstr(lv_label_get_text(lv_obj_get_child(s_mp_again,0)),"Waiting"));
+        assert(pet_state_get()->evolution_progress==chat_stars);
+        unsigned close_chat=test_mp_close;tap(80,416);assert(s_view==PLAY_MENU && test_mp_close==close_chat+1);
+        test_mp=(mp_state_t){0};s_mp_chat_mode=false;show(HOME);
     }
     show(FOOD);tap(180,350);assert(test_sfx==SFX_TOAST);tap(48,46);
     show(BALL);tap(lv_obj_get_x(s_target)+48,lv_obj_get_y(s_target)+48);assert(test_sfx==SFX_BOUNCE);

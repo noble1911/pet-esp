@@ -1,0 +1,58 @@
+[
+  {
+    "speaker": "Osono",
+    "turn": 1,
+    "text": "Hello Larry! Fancy a little tea break together?",
+    "pcm_bytes": 83704,
+    "sha256": "eaac2e28109c1d8a0d8631bae395fd0bfd53997891625ee0a627d1c6fc61bf4f"
+  },
+  {
+    "speaker": "Larry",
+    "turn": 2,
+    "text": "Ah, Osono. Yes, actually. Quiet moment sounds rather nice.",
+    "pcm_bytes": 117706,
+    "sha256": "6b13a73c6fdcc977fba032567d1236d84ea78022b5fec705aa7b582d82f5c972"
+  },
+  {
+    "speaker": "Osono",
+    "turn": 3,
+    "text": "I was imagining the most wonderful warm bread. Crusty outside, soft inside.",
+    "pcm_bytes": 151828,
+    "sha256": "85b62e9fe327170f764e600b9f9fc5d45a8d1a6bfd6d3ffbc1e3049b9473ccee"
+  },
+  {
+    "speaker": "Larry",
+    "turn": 4,
+    "text": "That does sound rather comforting. Better than my pretend stack of reports.",
+    "pcm_bytes": 137186,
+    "sha256": "a6f30a7957db1d7967125238540740abcdcdc01d716b387b783c80d5db798e21"
+  },
+  {
+    "speaker": "Osono",
+    "turn": 5,
+    "text": "We could play hide and seek in an imaginary bakery! You hide the bread rolls?",
+    "pcm_bytes": 135094,
+    "sha256": "7b687c5c4bddea53c20a974c3fba469d0fa3e96457ef0effef432191cc48cbb8"
+  },
+  {
+    "speaker": "Larry",
+    "turn": 6,
+    "text": "I rather like that idea. Though I might need a nap first, truthfully.",
+    "pcm_bytes": 112148,
+    "sha256": "2d670caa934b9f0746a417815b8700545c322cea01c48f8789c29cf4f6a4a4de"
+  },
+  {
+    "speaker": "Osono",
+    "turn": 7,
+    "text": "Oh, a good nap before adventures is perfectly sensible. Very organized of you.",
+    "pcm_bytes": 153840,
+    "sha256": "909e21347b9ce214a61629d97e705500ffa269c614fdb85a6bab4967b5184d62"
+  },
+  {
+    "speaker": "Larry",
+    "turn": 8,
+    "text": "Indeed. Then we shall find those rolls together. Sounds rather lovely, really.",
+    "pcm_bytes": 135350,
+    "sha256": "14cb81bcf8a23a3b9f6917f10ce9df3b6a6194d31b707e1d6f33bb6e3bb244fb"
+  }
+]

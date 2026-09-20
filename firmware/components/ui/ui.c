@@ -161,25 +161,44 @@ static void reset_cb(lv_event_t *e)
     voice_cancel();audio_stop_tune();
     esp_restart();
 }
-// One bubble treatment for home speech and care celebrations. The root owns
-// the tail and body together so hiding a caption also hides its decoration.
+// Paint the body and tail as one component. Text never outlives its background,
+// and the entire panel is invalidated when a caption changes on partial displays.
+static void bubble_draw(lv_event_t *e)
+{
+    lv_obj_t *obj=lv_event_get_target(e);lv_area_t box;lv_obj_get_coords(obj,&box);
+    lv_layer_t *layer=lv_event_get_layer(e);lv_draw_rect_dsc_t d;lv_draw_rect_dsc_init(&d);
+    d.bg_color=lv_color_hex(CREAM);d.bg_opa=LV_OPA_COVER;d.radius=12;
+    d.border_color=lv_color_hex(INK);d.border_width=2;d.border_opa=LV_OPA_COVER;
+    lv_area_t body={box.x1+2,box.y1+2,box.x2-2,box.y1+79};lv_draw_rect(layer,&d,&body);
+    d.radius=0;d.border_width=0;
+    const int tail[][5]={{145,78,18,5,0},{149,83,14,5,0},{155,88,8,4,0},
+                         {147,77,14,5,1},{151,82,10,5,1},{157,87,4,3,1}};
+    for(unsigned i=0;i<6;i++) {
+        d.bg_color=lv_color_hex(tail[i][4]?CREAM:INK);
+        lv_area_t r={box.x1+tail[i][0],box.y1+tail[i][1],box.x1+tail[i][0]+tail[i][2]-1,box.y1+tail[i][1]+tail[i][3]-1};
+        lv_draw_rect(layer,&d,&r);
+    }
+}
+static lv_obj_t *caption_bubble(int y)
+{
+    lv_obj_t *bubble=shape(s_root,24,y,320,94,CREAM,0);
+    lv_obj_set_style_bg_opa(bubble,LV_OPA_TRANSP,0);
+    lv_obj_add_event_cb(bubble,bubble_draw,LV_EVENT_DRAW_MAIN,NULL);
+    lv_obj_t *caption=label(bubble,"",14,13,292,false);
+    lv_obj_set_height(caption,56);lv_label_set_long_mode(caption,LV_LABEL_LONG_DOT);
+    lv_obj_remove_flag(caption,LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    return caption;
+}
+static void caption_text(lv_obj_t *caption,const char *text)
+{
+    if(strcmp(lv_label_get_text(caption),text)) {
+        lv_label_set_text(caption,text);lv_obj_invalidate(lv_obj_get_parent(caption));
+    }
+}
 static void speech_bubble(int y)
 {
-    lv_obj_t *bubble=shape(s_root,24,y,320,88,CREAM,0);
-    lv_obj_set_style_bg_opa(bubble,LV_OPA_TRANSP,0);
-    lv_obj_t *body=shape(bubble,0,0,320,76,CREAM,0);
-    lv_obj_set_style_radius(body,12,0);
-    lv_obj_set_style_border_width(body,2,0);lv_obj_set_style_border_color(body,lv_color_hex(INK),0);
-    lv_obj_set_style_shadow_color(body,lv_color_hex(0x875e72),0);
-    lv_obj_set_style_shadow_opa(body,LV_OPA_20,0);lv_obj_set_style_shadow_width(body,4,0);
-    lv_obj_set_style_shadow_ofs_y(body,3,0);
-    // Stepped tail keeps the illustrated toy's pixel character.
-    shape(bubble,145,74,18,5,INK,0);shape(bubble,149,79,14,5,INK,0);shape(bubble,155,84,8,4,INK,0);
-    shape(bubble,147,72,14,5,CREAM,0);shape(bubble,151,77,10,5,CREAM,0);shape(bubble,157,82,4,3,CREAM,0);
-    s_caption_label=label(bubble,"",12,11,296,false);
-    lv_obj_set_height(s_caption_label,LV_SIZE_CONTENT);lv_obj_set_style_max_height(s_caption_label,52,0);
-    lv_label_set_long_mode(s_caption_label,LV_LABEL_LONG_SCROLL);lv_obj_align(s_caption_label,LV_ALIGN_CENTER,0,-6);
-    lv_obj_add_flag(bubble,LV_OBJ_FLAG_HIDDEN);
+    s_caption_label=caption_bubble(y);
+    lv_obj_add_flag(lv_obj_get_parent(s_caption_label),LV_OBJ_FLAG_HIDDEN);
 }
 static void microphone(lv_obj_t *parent)
 {
@@ -1214,16 +1233,16 @@ static void frame(lv_timer_t *t)
         else lv_obj_add_flag(lv_obj_get_parent(s_caption_label),LV_OBJ_FLAG_HIDDEN);
         if(vs==VOICE_LISTENING) {
             int level=audio_mic_level();
-            lv_label_set_text(s_caption_label,level>300?"I'm listening...\nI can hear your voice!":"I'm listening...\nSpeak close to me");
+            caption_text(s_caption_label,level>300?"I'm listening...\nI can hear your voice!":"I'm listening...\nSpeak close to me");
             if(s_voice_status)lv_label_set_text(s_voice_status,"Let go when you're done");
         } else if(vs==VOICE_THINKING) {
-            lv_label_set_text(s_caption_label,local_reaction?s_reaction_text:"One little moment...");
+            caption_text(s_caption_label,local_reaction?s_reaction_text:"One little moment...");
             if(s_voice_status)lv_label_set_text(s_voice_status,"Thinking...");
         } else if(local_reaction && !speaking) {
-            lv_label_set_text(s_caption_label,s_reaction_text);
+            caption_text(s_caption_label,s_reaction_text);
             if(s_voice_status)lv_label_set_text(s_voice_status,s_view==HOME?"Hold here or BOOT to talk":"Hold BOOT to talk");
         } else if(caption[0] && (int32_t)(s_voice_until-now)>0) {
-            if(strcmp(lv_label_get_text(s_caption_label),caption))lv_label_set_text(s_caption_label,caption);
+            if(strcmp(lv_label_get_text(s_caption_label),caption))caption_text(s_caption_label,caption);
             if(s_voice_status)lv_label_set_text(s_voice_status,speaking?"Chatting with you":s_view==HOME?"Hold here or BOOT to reply":"Hold BOOT to reply");
         } else {
             char greeting[80];snprintf(greeting,sizeof(greeting),s_view==HOME?"Hold to talk to %s":"Hold BOOT to talk to %s",pet_state_get()->name);

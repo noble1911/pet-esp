@@ -321,4 +321,44 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(event,{'type':'pet_music','score':score})
         self.assertEqual(chunks[-1],'data: [DONE]\n\n')
 
+class PlaydateChatTests(unittest.IsolatedAsyncioTestCase):
+    def request(self):
+        from api.routes.pet import PlaydateChat
+        base=dict(name='Olive',character=7,stage=3,fullness=80,happiness=70,energy=60,
+                  cleanliness=90,stars=30,personality=0)
+        return PlaydateChat(pets=[dict(base,user_id='first'),dict(base,user_id='second',name='Larry',character=6)])
+
+    async def test_chat_is_internal_pet_only_and_does_not_retrieve_memory(self):
+        from api.routes.pet import pet_playdate_chat,PlaydateDialogue
+        captured={};pool=MagicMock();pool.pool.fetchval=AsyncMock(return_value={'profile':'virtual_pet'})
+        async def brain(**kwargs):
+            captured.update(kwargs)
+            yield '```json\n'+json.dumps({'lines':['Hello little friend, shall we imagine a picnic?']*8})+'\n```'
+        with patch('api.routes.pet.stream_chat_with_tools',brain),patch('api.routes.pet._load_facts',AsyncMock()) as facts,patch('api.routes.pet.load_conversation_messages',AsyncMock()) as history:
+            result=await pet_playdate_chat(self.request(),None,pool)
+            self.assertIsInstance(result,PlaydateDialogue)
+            facts.assert_not_awaited();history.assert_not_awaited()
+        self.assertEqual(captured['tools'],{});self.assertEqual(captured['history'],[])
+        self.assertEqual(captured['model_override'],PET_MODEL);self.assertFalse(captured['allow_web_search'])
+        self.assertNotIn('user_id',captured['user_message'])
+        pets=json.loads(captured['user_message'])['pets']
+        self.assertEqual([p['name'] for p in pets],['Olive','Larry'])
+        self.assertIn('baker',pets[0]['voice_style']);self.assertIn('salaryman',pets[1]['voice_style'])
+        self.assertIn('never invent owner names',captured['system_prompt'][0]['text'])
+        with self.assertRaises(HTTPException):await pet_playdate_chat(self.request(),'first',pool)
+        req=self.request();req.pets[1].user_id='first'
+        with self.assertRaises(HTTPException):await pet_playdate_chat(req,None,pool)
+        pool.pool.fetchval=AsyncMock(return_value={'profile':'adult'})
+        with self.assertRaises(HTTPException):await pet_playdate_chat(self.request(),None,pool)
+
+    async def test_chat_rejects_malformed_or_long_generated_dialogue(self):
+        from api.routes.pet import pet_playdate_chat,PlaydateDialogue
+        for lines in (['Hello']*7,['Hello']*9,['word '*21]*8,['[waves] Hello']*8,['Hi\x00friend']*8,['é'*100]*8):
+            with self.assertRaises(ValidationError):PlaydateDialogue(lines=lines)
+        pool=MagicMock();pool.pool.fetchval=AsyncMock(return_value={'profile':'virtual_pet'})
+        async def bad(**kwargs):yield 'not json'
+        with patch('api.routes.pet.stream_chat_with_tools',bad):
+            with self.assertRaises(HTTPException) as exc:await pet_playdate_chat(self.request(),None,pool)
+        self.assertEqual(exc.exception.status_code,502)
+
 if __name__=='__main__':unittest.main()

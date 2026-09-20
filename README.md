@@ -14,6 +14,8 @@ A gentle touchscreen pet for the **Waveshare ESP32-S3-Touch-AMOLED-1.8 (original
 
 ## Current version
 
+Pet chat adds eight alternating spoken turns between two invited pets, with character personalities and shared captions. The same bubble redraw fix covers Home and care screens. See [Pet chat and speech bubbles](docs/pet-chat-v1.md). Firmware is built; USB installation is pending.
+
 Care has distinct sound effects, and **Play → Music** offers three offline tunes plus a button to ask Sprout for an original melody. You can also say “make me a happy tune.” See [sounds, music, tests and rollback](docs/sound-music-v1.md).
 
 Playtime adds Peekaboo, Bouncy ball, eighteen interactive wall stickers, six room gifts that can be placed together, butterfly visits and changing pretend window weather. See [playful rewards](docs/playful-rewards-v2.md) for the new treasure menu and room interactions. Existing progress counts toward every reward. See [controls, testing and rollback](docs/playtime-v1.md).

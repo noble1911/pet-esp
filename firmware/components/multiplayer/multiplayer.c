@@ -1,5 +1,6 @@
 #include "multiplayer.h"
 #include "voice.h"
+#include "audio.h"
 #include "cJSON.h"
 #include "esp_websocket_client.h"
 #include "freertos/FreeRTOS.h"
@@ -19,6 +20,11 @@ static mp_state_t s_state;
 static Pet s_pet;
 static atomic_bool s_connected,s_hello,s_active;
 static atomic_uint s_epoch;
+static atomic_bool s_audio,s_audio_ended;
+static unsigned s_audio_seq;
+static char s_audio_room[33];
+static TickType_t s_audio_end_at;
+static int s_rxop;
 static char s_rx[4096];static size_t s_rxlen;static bool s_rxvalid;
 static const char *string(cJSON *o,const char *key)
 {
@@ -33,15 +39,30 @@ static void peer(cJSON *o,mp_peer_t *p)
 {
     strlcpy(p->user,string(o,"user"),sizeof p->user);strlcpy(p->id,string(o,"id"),sizeof p->id);
     strlcpy(p->name,string(o,"name"),sizeof p->name);p->character=number(o,"character",PET_CHARACTER_COUNT-1);p->stage=number(o,"stage",5);
+    p->chat=cJSON_IsTrue(cJSON_GetObjectItem(o,"chat"));
 }
 static void receive(void)
 {
     cJSON *o=cJSON_Parse(s_rx);if(!o)return;
+    if(!strcmp(string(o,"type"),"chat_audio_start") && atomic_load(&s_active)) {
+        // A room may have been left while audio was queued on the socket.
+        mp_state_t state;multiplayer_snapshot(&state);
+        if(state.chat && state.phase==MP_PLAYING && state.my_turn &&
+           !strcmp(state.room,string(o,"room")) && state.seq==number(o,"seq",8)) {
+            strlcpy(s_audio_room,state.room,sizeof s_audio_room);s_audio_seq=state.seq;
+            atomic_store(&s_audio_ended,false);atomic_store(&s_audio,true);audio_voice_begin();
+        }
+    } else if(!strcmp(string(o,"type"),"chat_audio_end") && atomic_load(&s_audio) &&
+              !strcmp(s_audio_room,string(o,"room")) && s_audio_seq==number(o,"seq",8)) {
+        audio_voice_end();s_audio_end_at=xTaskGetTickCount();atomic_store(&s_audio_ended,true);
+    }
     if(!strcmp(string(o,"type"),"play_state")) {
         mp_state_t next={.connected=true};const char *phases[]={"offline","closed","lobby","outgoing","incoming","playing","waiting","finished"};
         for(unsigned i=0;i<8;i++)if(!strcmp(string(o,"phase"),phases[i]))next.phase=(mp_phase_t)i;
         next.seq=number(o,"seq",10);next.my_turn=cJSON_IsTrue(cJSON_GetObjectItem(o,"my_turn"));
         next.online=cJSON_IsTrue(cJSON_GetObjectItem(o,"online"));next.again=cJSON_IsTrue(cJSON_GetObjectItem(o,"again"));
+        next.chat=!strcmp(string(o,"mode"),"chat");next.speaking=cJSON_IsTrue(cJSON_GetObjectItem(o,"speaking"));
+        strlcpy(next.text,string(o,"text"),sizeof next.text);
         strlcpy(next.room,string(o,"room"),sizeof next.room);strlcpy(next.invite,string(o,"invite"),sizeof next.invite);
         strlcpy(next.notice,string(o,"notice"),sizeof next.notice);peer(cJSON_GetObjectItem(o,"peer"),&next.peer);
         cJSON *peers=cJSON_GetObjectItem(o,"peers"),*item;
@@ -49,6 +70,9 @@ static void receive(void)
         cJSON *reward=cJSON_GetObjectItem(o,"reward");
         next.reward_id=strtoull(string(reward,"id"),NULL,10);next.reward_pet=strtoull(string(reward,"pet"),NULL,16);
         next.reward_friend=strtoull(string(reward,"friend"),NULL,16);next.friends=number(reward,"friends",65535);
+        if(atomic_load(&s_audio) && (!next.chat || !next.speaking || strcmp(next.room,s_audio_room))) {
+            atomic_store(&s_audio,false);atomic_store(&s_audio_ended,false);audio_voice_stop();
+        }
         portENTER_CRITICAL(&s_lock);s_state=next;portEXIT_CRITICAL(&s_lock);
         atomic_store(&s_connected,true);
     }
@@ -59,10 +83,18 @@ static void event(void *arg,esp_event_base_t base,int32_t id,void *data)
     (void)arg;(void)base;
     if(id==WEBSOCKET_EVENT_CONNECTED) {s_rxlen=0;s_rxvalid=false;atomic_store(&s_hello,true);}
     else if(id==WEBSOCKET_EVENT_DISCONNECTED || id==WEBSOCKET_EVENT_ERROR || id==WEBSOCKET_EVENT_CLOSED) {
+        if(atomic_exchange(&s_audio,false))audio_voice_stop();
+        atomic_store(&s_audio_ended,false);
         atomic_store(&s_connected,false);
         portENTER_CRITICAL(&s_lock);s_state.connected=false;s_state.phase=MP_OFFLINE;portEXIT_CRITICAL(&s_lock);
     } else if(id==WEBSOCKET_EVENT_DATA) {
         esp_websocket_event_data_t *d=data;
+        if(d->op_code==1 || d->op_code==2)s_rxop=d->op_code;
+        if(s_rxop==2) {
+            if(atomic_load(&s_audio) && atomic_load(&s_active) && d->data_len>0)audio_play_pcm((const uint8_t*)d->data_ptr,d->data_len);
+            if(d->fin && d->payload_offset+d->data_len>=d->payload_len)s_rxop=0;
+            return;
+        }
         if(d->op_code==1 && d->payload_offset==0) {s_rxlen=0;s_rxvalid=true;}
         if(d->op_code!=1 && d->op_code!=0)return;
         if(d->data_len<0 || s_rxlen+(size_t)d->data_len>=sizeof s_rx) {s_rxvalid=false;return;}
@@ -90,6 +122,9 @@ static void add_pet(cJSON *o)
     cJSON *profile=cJSON_AddObjectToObject(o,"pet");cJSON_AddStringToObject(profile,"id",id);
     cJSON_AddStringToObject(profile,"name",p.name);cJSON_AddNumberToObject(profile,"character",pet_character_id(&p));
     cJSON_AddNumberToObject(profile,"stage",p.stage);
+    cJSON_AddNumberToObject(profile,"fullness",p.hunger);cJSON_AddNumberToObject(profile,"happiness",p.happiness);
+    cJSON_AddNumberToObject(profile,"energy",p.energy);cJSON_AddNumberToObject(profile,"cleanliness",p.hygiene);
+    cJSON_AddNumberToObject(profile,"stars",p.evolution_progress);cJSON_AddNumberToObject(profile,"personality",p.genes[7]%8);
 }
 static void worker(void *arg)
 {
@@ -99,6 +134,7 @@ static void worker(void *arg)
     for(;;) {
         if(atomic_exchange(&s_hello,false)) {
             cJSON *o=message("hello");cJSON_AddNumberToObject(o,"proto",1);cJSON_AddNumberToObject(o,"artwork",3);
+            cJSON_AddNumberToObject(o,"chat",1);
             cJSON_AddStringToObject(o,"user_id",voice_device_id());cJSON_AddStringToObject(o,"device_token",voice_device_token());
             add_pet(o);send_json(o);sent_epoch=UINT32_MAX;ping=xTaskGetTickCount();
         }
@@ -110,7 +146,7 @@ static void worker(void *arg)
         Command c;
         if(xQueueReceive(s_commands,&c,pdMS_TO_TICKS(100))==pdTRUE && atomic_load(&s_connected) && (c.epoch==atomic_load(&s_epoch) || !strcmp(c.type,"ack"))) {
             cJSON *o=message(c.type);
-            if(!strcmp(c.type,"invite"))cJSON_AddStringToObject(o,"user",c.key);
+            if(!strcmp(c.type,"invite")) {cJSON_AddStringToObject(o,"user",c.key);cJSON_AddStringToObject(o,"mode",c.seq?"chat":"ball");}
             if(!strcmp(c.type,"accept") || !strcmp(c.type,"decline"))cJSON_AddStringToObject(o,"invite",c.key);
             if(!strcmp(c.type,"pass") || !strcmp(c.type,"again")) {cJSON_AddStringToObject(o,"room",c.key);cJSON_AddNumberToObject(o,"seq",c.seq);}
             if(!strcmp(c.type,"ack")) {
@@ -118,6 +154,10 @@ static void worker(void *arg)
                 cJSON_AddStringToObject(o,"id",id);cJSON_AddStringToObject(o,"pet",pet);
             }
             send_json(o);
+        }
+        if(atomic_load(&s_audio_ended) && !audio_voice_playing() && xTaskGetTickCount()-s_audio_end_at>pdMS_TO_TICKS(250)) {
+            cJSON *o=message("heard");cJSON_AddStringToObject(o,"room",s_audio_room);cJSON_AddNumberToObject(o,"seq",s_audio_seq);
+            if(send_json(o)) {atomic_store(&s_audio_ended,false);atomic_store(&s_audio,false);}
         }
         if(atomic_load(&s_connected) && xTaskGetTickCount()-ping>pdMS_TO_TICKS(5000)) {send_json(message("ping"));ping=xTaskGetTickCount();}
     }
@@ -136,7 +176,7 @@ void multiplayer_open(const Pet *p)
     portENTER_CRITICAL(&s_lock);s_pet=*p;portEXIT_CRITICAL(&s_lock);
     atomic_store(&s_active,true);atomic_fetch_add(&s_epoch,1);
 }
-void multiplayer_close(void) {atomic_store(&s_active,false);atomic_fetch_add(&s_epoch,1);}
+void multiplayer_close(void) {atomic_store(&s_active,false);atomic_fetch_add(&s_epoch,1);if(atomic_exchange(&s_audio,false))audio_voice_stop();atomic_store(&s_audio_ended,false);}
 void multiplayer_snapshot(mp_state_t *out) {portENTER_CRITICAL(&s_lock);*out=s_state;portEXIT_CRITICAL(&s_lock);}
 static bool command(const char *type,const char *key,unsigned seq)
 {
@@ -145,6 +185,7 @@ static bool command(const char *type,const char *key,unsigned seq)
     return xQueueSend(s_commands,&c,0)==pdTRUE;
 }
 bool multiplayer_invite(const char *user) {return command("invite",user,0);}
+bool multiplayer_chat_invite(const char *user) {return command("invite",user,1);}
 bool multiplayer_accept(const char *invite) {return command("accept",invite,0);}
 bool multiplayer_decline(const char *invite) {return command("decline",invite,0);}
 bool multiplayer_pass(const char *room,unsigned seq) {return command("pass",room,seq);}

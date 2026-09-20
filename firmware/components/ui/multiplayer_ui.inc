@@ -8,17 +8,23 @@ static pixel_pet_art_t *s_mp_art;
 static lv_obj_t *s_mp_images[2],*s_mp_ball,*s_mp_progress[10],*s_mp_again,*s_mp_medal;
 static uint32_t s_mp_poll,s_mp_motion,s_mp_request,s_mp_reward_retry;
 static bool s_mp_pending,s_mp_from_self,s_mp_reward_ok;
+static bool s_mp_chat_mode;
+static lv_obj_t *s_mp_caption;
 static uint64_t s_mp_saved_receipt;
 static void mp_action(lv_event_t *e)
 {
     int action=(int)(intptr_t)lv_event_get_user_data(e);bool ok=false;
-    if(action>=0 && (unsigned)action<s_mp.count)ok=multiplayer_invite(s_mp.peers[action].user);
+    if(action>=0 && (unsigned)action<s_mp.count) {
+        if(s_mp_chat_mode && !s_mp.peers[action].chat) {lv_label_set_text(s_hint,"Update both pets for Pet chat.");return;}
+        ok=s_mp_chat_mode?multiplayer_chat_invite(s_mp.peers[action].user):multiplayer_invite(s_mp.peers[action].user);
+    }
     else if(action==-1)ok=multiplayer_accept(s_mp.invite);
     else if(action==-2)ok=multiplayer_decline(s_mp.invite);
     else if(action==-3 && s_mp.my_turn && !s_mp_pending && lv_tick_get()-s_mp_motion>=850) {
         ok=multiplayer_pass(s_mp.room,s_mp.seq);
         if(ok){s_mp_pending=true;s_mp_request=lv_tick_get();}
     } else if(action==-4)ok=multiplayer_again(s_mp.room);
+    else if(action==-5 || action==-6) {s_mp_chat_mode=action==-6;show(MULTIPLAYER);return;}
     if(!ok && s_hint)lv_label_set_text(s_hint,"One little moment. Try again soon.");
 }
 static Pet mp_other(void)
@@ -37,7 +43,7 @@ static void mp_pair(void)
 static bool mp_game(mp_phase_t phase) {return phase==MP_PLAYING || phase==MP_WAITING || phase==MP_FINISHED;}
 static void make_multiplayer(void)
 {
-    multiplayer_snapshot(&s_mp);s_mp_images[0]=s_mp_images[1]=NULL;s_mp_ball=NULL;s_mp_again=NULL;
+    multiplayer_snapshot(&s_mp);s_mp_images[0]=s_mp_images[1]=NULL;s_mp_ball=NULL;s_mp_again=NULL;s_mp_caption=NULL;
     s_mp_pending=false;s_mp_motion=lv_tick_get();memset(s_mp_progress,0,sizeof s_mp_progress);
     if(!s_mp_art) {
 #ifdef ESP_PLATFORM
@@ -48,6 +54,16 @@ static void make_multiplayer(void)
     }
     if(!s_mp_art) {header_to("Multiplayer",PLAY_MENU);s_hint=label(s_root,"A little hiccup. Please restart and try again.",24,180,320,false);return;}
     if(mp_game(s_mp.phase)) {
+        if(s_mp.chat) {
+            room(false);header_to("Pet chat",PLAY_MENU);mp_pair();
+            shape(s_root,24,80,320,32,CREAM,0);
+            s_hint=label(s_root,"Thinking of a little adventure...",20,88,328,false);
+            s_mp_caption=caption_bubble(270);caption_text(s_mp_caption,"One little moment...");
+            lv_obj_t *stop=button(s_root,24,393,142,46,CREAM,nav_cb,PLAY_MENU);label(stop,"Go home",0,15,142,false);
+            s_mp_again=button(s_root,180,393,164,46,MINT,mp_action,-4);label(s_mp_again,"Chat again",0,15,164,false);
+            lv_obj_add_flag(s_mp_again,LV_OBJ_FLAG_HIDDEN);
+            return;
+        }
         room(false);header_to("Pass the ball",PLAY_MENU);mp_pair();
         shape(s_root,24,80,320,36,CREAM,0);
         for(unsigned i=0;i<10;i++) {
@@ -62,26 +78,30 @@ static void make_multiplayer(void)
         s_mp_again=button(s_root,69,395,230,44,MINT,mp_action,-4);label(s_mp_again,"Play again",0,14,230,false);
         lv_obj_add_flag(s_mp_again,LV_OBJ_FLAG_HIDDEN);
     } else if(s_mp.phase==MP_INCOMING || s_mp.phase==MP_OUTGOING) {
-        header_to("Play together?",PLAY_MENU);mp_pair();
-        s_hint=label(s_root,s_mp.phase==MP_INCOMING?"Your friend wants to play!":"Waiting for your friend...",20,271,328,false);
+        header_to(s_mp.chat?"Chat together?":"Play together?",PLAY_MENU);mp_pair();
+        s_hint=label(s_root,s_mp.phase==MP_INCOMING?(s_mp.chat?"A little chat with your friend!":"Your friend wants to play!"):"Waiting for your friend...",20,271,328,false);
         if(s_mp.phase==MP_INCOMING) {
-            lv_obj_t *yes=button(s_root,54,308,260,60,MINT,mp_action,-1);label(yes,"Play together!",0,21,260,true);
+            lv_obj_t *yes=button(s_root,54,308,260,60,MINT,mp_action,-1);label(yes,s_mp.chat?"Let's chat!":"Play together!",0,21,260,true);
         }
         lv_obj_t *no=button(s_root,84,388,200,48,CREAM,mp_action,-2);label(no,s_mp.phase==MP_INCOMING?"Not now":"Cancel invitation",0,16,200,false);
     } else {
         header_to("Multiplayer",PLAY_MENU);
         char title[64];snprintf(title,sizeof title,"%s's playdates",pet_state_get()->name);label(s_root,title,24,87,320,false);
         pixel_pet_render(&s_mp_art[0],pet_state_get(),PIXEL_IDLE,0,PIXEL_APPLE);
-        s_mp_images[0]=art(s_root,&s_mp_art[0].image,139,112,320);
-        s_hint=label(s_root,s_mp.connected?(s_mp.notice[0]?s_mp.notice:s_mp.count?"Choose a friend!":"Looking for a friend..."):"Connecting to your home...",20,215,328,false);
+        s_mp_images[0]=art(s_root,&s_mp_art[0].image,148,111,256);
+        lv_obj_t *ball=button(s_root,24,192,152,42,s_mp_chat_mode?CREAM:MINT,mp_action,-5);
+        label(ball,"Ball game",0,13,152,false);
+        lv_obj_t *chat=button(s_root,192,192,152,42,s_mp_chat_mode?MINT:CREAM,mp_action,-6);
+        label(chat,"Pet chat",0,13,152,false);
+        s_hint=label(s_root,s_mp.connected?(s_mp.notice[0]?s_mp.notice:s_mp.count?"Choose a friend!":"Looking for a friend..."):"Connecting to your home...",20,241,328,false);
         if(s_mp.connected && s_mp.count) {
-            lv_obj_t *list=shape(s_root,24,254,320,184,CREAM,0);lv_obj_add_flag(list,LV_OBJ_FLAG_SCROLLABLE);lv_obj_set_scroll_dir(list,LV_DIR_VER);
+            lv_obj_t *list=shape(s_root,24,274,320,164,CREAM,0);lv_obj_add_flag(list,LV_OBJ_FLAG_SCROLLABLE);lv_obj_set_scroll_dir(list,LV_DIR_VER);
             for(unsigned i=0;i<s_mp.count;i++) {
                 lv_obj_t *b=button(list,0,(int)i*70,316,62,(i%2)?PINK:MINT,mp_action,(int)i);
                 friends_icon(b,10,8);label(b,s_mp.peers[i].name,69,12,237,true);label(b,"Tap to invite",69,37,237,false);
             }
         } else {
-            label(s_root,s_mp.connected?"Open Multiplayer on your other pet.":"Check Wi-Fi in Options if this takes a while.",30,274,308,false);
+            label(s_root,s_mp.connected?"Open Multiplayer on your other pet.":"Check Wi-Fi in Options if this takes a while.",30,290,308,false);
             label(s_root,"Both pets need the same home Wi-Fi.",30,337,308,false);
         }
     }
@@ -99,7 +119,7 @@ static void multiplayer_frame(uint32_t now)
             }
         }
         if(s_view!=MULTIPLAYER)return;
-        bool redraw=mp_game(next.phase)!=mp_game(s_mp.phase) || strcmp(next.room,s_mp.room) ||
+        bool redraw=mp_game(next.phase)!=mp_game(s_mp.phase) || next.chat!=s_mp.chat || strcmp(next.room,s_mp.room) ||
             (!mp_game(next.phase) && (next.phase!=s_mp.phase || next.count!=s_mp.count || strcmp(next.notice,s_mp.notice) ||
              strcmp(next.invite,s_mp.invite) || memcmp(next.peers,s_mp.peers,sizeof next.peers)));
         if(redraw) {show(MULTIPLAYER);return;}
@@ -107,18 +127,29 @@ static void multiplayer_frame(uint32_t now)
             s_mp_motion=now;s_mp_from_self=!next.my_turn;
             // The last pass belongs to player 2, whose turn was set in the prior snapshot.
             if(next.seq==10)s_mp_from_self=s_mp.my_turn;
-            s_mp_pending=false;audio_play(SFX_BOUNCE);
+            s_mp_pending=false;if(!next.chat)audio_play(SFX_BOUNCE);
         }
         if(next.phase!=s_mp.phase)s_mp_pending=false;
         s_mp=next;
     }
     if(s_view!=MULTIPLAYER)return;
-    bool flying=s_mp.seq>0 && now-s_mp_motion<720 && s_mp.phase!=MP_WAITING;
+    bool flying=!s_mp.chat && s_mp.seq>0 && now-s_mp_motion<720 && s_mp.phase!=MP_WAITING;
     if(s_mp_pending && now-s_mp_request>3000)s_mp_pending=false;
     for(unsigned i=0;i<2;i++)if(s_mp_images[i]) {
         Pet other=mp_other();const Pet *pet=i?&other:pet_state_get();
         pixel_face_t face=s_mp.phase==MP_FINISHED && !flying?PIXEL_HAPPY:flying?PIXEL_PLAY:now%4400>4200?PIXEL_BLINK:PIXEL_IDLE;
+        if(s_mp.chat && s_mp.speaking)face=(s_mp.my_turn==(i==0))?PIXEL_TALK:PIXEL_LISTEN;
         pixel_pet_render(&s_mp_art[i],pet,face,flying?(i?0:3):now/180,PIXEL_APPLE);lv_obj_invalidate(s_mp_images[i]);
+    }
+    if(s_mp_caption) {
+        char title[80];snprintf(title,sizeof title,"%s is talking  %u / 8",s_mp.my_turn?pet_state_get()->name:s_mp.peer.name,s_mp.seq);
+        lv_label_set_text(s_hint,s_mp.phase==MP_FINISHED?(s_mp.notice[0]?s_mp.notice:"A lovely little chat!"):s_mp.seq?title:"Thinking of a little adventure...");
+        caption_text(s_mp_caption,s_mp.text[0]?s_mp.text:"One little moment...");
+        if(s_mp.phase==MP_FINISHED) {
+            lv_obj_remove_flag(s_mp_again,LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text(lv_obj_get_child(s_mp_again,0),s_mp.again?"Waiting...":"Chat again");
+        } else lv_obj_add_flag(s_mp_again,LV_OBJ_FLAG_HIDDEN);
+        return;
     }
     if(!s_mp_ball)return;
     for(unsigned i=0;i<10;i++)lv_obj_set_style_bg_color(s_mp_progress[i],lv_color_hex(i<s_mp.seq?GOLD:0xe2e7df),0);
