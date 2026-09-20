@@ -100,7 +100,7 @@ when temporarily running the older gateway.
 
 Firmware `multiplayer-v1.1` (`4f48508`) is installed on the verified first board
 via `/dev/cu.usbmodem101`, with all flash hashes verified. The application uses
-`0x27fd90` bytes (17% app partition free). Moving the pair's buffers to PSRAM
+`0x27fdc0` bytes (17% app partition free). Moving the pair's buffers to PSRAM
 leaves 102,893 bytes unassigned in the static DIRAM report before runtime
 allocations. Boot capture identifies Olive (`6266ea62beb19b67`), restored at
 stage 3 with saved needs, and reaches the normal ready state without a panic.
