@@ -82,9 +82,9 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         for invalid in (-1,256,True,1.5):
             with self.assertRaises(ValidationError):PetState(**{**STATE,'genes':[invalid]*8})
 
-    def test_six_complete_characters_ignore_legacy_part_genes(self):
+    def test_seven_complete_characters_ignore_legacy_part_genes(self):
         from api.routes.pet_characters import CHARACTERS
-        self.assertEqual(len(CHARACTERS),6)
+        self.assertEqual(len(CHARACTERS),7)
         for marker in range(256):
             state=PetState(**{**STATE,'artwork_version':3,'genes':[marker]*8})
             snapshot=trait_snapshot(state)
@@ -97,6 +97,7 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
                 genes=[old_part]*8;genes[6]=240+character
                 snapshot=trait_snapshot(PetState(**{**STATE,'artwork_version':3,'genes':genes}))
                 self.assertEqual(snapshot['character']['character_type'],CHARACTERS[character]['name'])
+                self.assertEqual(snapshot['character'].get('voice_style'),CHARACTERS[character].get('voice_style'))
 
     def test_special_food_milestones_and_events(self):
         for stars in (0,9,10,24,25,49,50,99,100,2**32-1):
@@ -206,7 +207,7 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         async def brain(**kwargs):
             captured.update(kwargs)
             if False:yield ''
-        for name,marker in (("Olive",240),("Olive",245),("Rosy Pig",245),("Anne-Marie",241)):
+        for name,marker in (("Olive",240),("Olive",245),("Rosy Pig",245),("Anne-Marie",241),("Larry",246),("Olive",246)):
             pool.pool.fetchval=AsyncMock(side_effect=[{'profile':'virtual_pet'},'pet'])
             req=PetTurn(user_id='pet',session_id='test',transcript="What's your name?",
                         pet={**STATE,'name':name,'artwork_version':3,'genes':[0]*6+[marker,0]})
@@ -217,8 +218,15 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('CURRENT IDENTITY (data): '+json.dumps({'personal_name':name}),data)
             self.assertIn('"character_type":',data)
             self.assertNotIn('"character": {"name":',data)
-            final=captured['system_prompt'][-1]['text']
+            final=captured['system_prompt'][-2]['text']
             self.assertIn('say exactly '+json.dumps("I'm "+name+"!")+" and stop.",final)
+            self.assertIn('CURRENT LOOK FOR THIS TURN (data):',final)
+            self.assertIn('Ignore all previous appearance descriptions',final)
+            if marker==246:
+                self.assertIn('charcoal business suit',final)
+                self.assertIn('charcoal business suit',captured['user_message'])
+            self.assertIn(json.dumps(req.transcript),captured['user_message'])
+            self.assertIn(json.dumps(name),captured['user_message'])
             self.assertIn('Only describe your looks when the child asks',captured['system_prompt'][0]['text'])
 
     async def test_fresh_food_reaction_is_specific_and_has_no_memory_tools(self):

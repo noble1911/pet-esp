@@ -27,4 +27,13 @@ CHARACTERS = [{'key': 'sprout',
   'name': 'Rosy pig',
   'description': 'A pink little pig in a bright red dress.',
   'appearance': 'A pink pig with a rounded snout, two upright ears, rosy cheeks, a curly tail, a '
-                'bright red dress and little dark shoes.'}]
+                'bright red dress and little dark shoes.'},
+ {'key': 'larry',
+  'name': 'Larry',
+  'description': 'An ordinary salaryman on his lunch break.',
+  'appearance': 'A miniature adult salaryman with tired half-lidded eyes, swept dark hair with '
+                'silver streaks, a charcoal business suit, a pale shirt, a blue cloud-pattern tie '
+                'and dark shoes.',
+  'voice_style': 'Quiet, understated and gently dry, like a salaryman enjoying a well-earned lunch '
+                 'break. Occasional small jokes about meetings, paperwork or taking a break; still '
+                 'warm and kind. Never sound like a corporate assistant or be dismissive.'}]

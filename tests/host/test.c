@@ -598,7 +598,7 @@ int main(void)
     advance(900);s_muted=true;audio_set_muted(true);test_power_press=true;advance(2100);
     assert(s_view==HOME && test_audio_muted);s_muted=false;audio_set_muted(false);
     assert(pet_state_get()->pet_id==before_sleep.pet_id && pet_state_get()->evolution_progress==before_sleep.evolution_progress);
-    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; six whole characters, preview wraparound and transactional choice; milestone foods with original painted colours, paced meals, fades, compact mic, expanded back targets, PWR save/cancel/error recovery, reactive ball arcs and delayed fifth-bounce reward, cancel, failed saves and capped bonuses");
+    puts("PASS: decay, floor, restore, persistence, growth; actual pointer taps through food/game/bath, sleep cancellation, rewards, mute, 100 navigation cycles; peekaboo, ball, 18 interactive wall stickers, six simultaneous saved gifts, legacy saves, weather and visits; seven whole characters, preview wraparound and transactional choice; milestone foods with original painted colours, paced meals, fades, compact mic, expanded back targets, PWR save/cancel/error recovery, reactive ball arcs and delayed fifth-bounce reward, cancel, failed saves and capped bonuses");
     lv_deinit();
     return 0;
 }
