@@ -42,3 +42,17 @@ when that was the supplied name. Current identity and appearance accompany
 the latest utterance as clearly labelled device data; only the original
 player transcript is stored in conversation history. No memories were changed
 by the smoke checks.
+
+## Deployment — 2026-09-20
+
+Backend commit `0fa13dd` is deployed on Ron's Mac mini. Butler is healthy and
+all 17 tests pass against the deployed code. Firmware `larry-v1` (`0644f02`)
+built with ESP-IDF 5.3.5: application size `0x263b30`, 20% free. USB flash via
+`/dev/cu.usbmodem101` completed successfully with all hashes verified. NVS was
+not erased. The existing device reconnected to the authenticated voice gateway
+at 12:40:27 UTC. Passive USB capture returned no application logs, so the boot
+check relies on the gateway reconnect rather than a reread of the saved state
+or a physical screen inspection. Larry is installed as choice 7 of 7.
+
+Logs: `/tmp/pet-larry-build.log`, `/tmp/pet-larry-flash.log`,
+`/tmp/pet-larry-gateway.log`, `/tmp/pet-larry-test.log`.
