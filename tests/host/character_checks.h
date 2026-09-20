@@ -35,5 +35,5 @@ static void character_checks(void) {
    pixel_pet_art_t hold,bite;pixel_pet_render(&hold,&p,PIXEL_EAT,0,food);pixel_pet_render(&bite,&p,PIXEL_EAT,4,food);assert(memcmp(hold.pixels,bite.pixels,sizeof hold.pixels));
   }
  }
- puts("PASS: 182 whole frames decode safely, all seven characters distinct, legacy genes inert, all actions/stages bounded");
+ puts("PASS: 208 whole frames decode safely, all eight characters distinct, legacy genes inert, all actions/stages bounded");
 }

@@ -93,9 +93,9 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         for invalid in (-1,256,True,1.5):
             with self.assertRaises(ValidationError):PetState(**{**STATE,'genes':[invalid]*8})
 
-    def test_seven_complete_characters_ignore_legacy_part_genes(self):
+    def test_eight_complete_characters_ignore_legacy_part_genes(self):
         from api.routes.pet_characters import CHARACTERS
-        self.assertEqual(len(CHARACTERS),7)
+        self.assertEqual(len(CHARACTERS),8)
         for marker in range(256):
             state=PetState(**{**STATE,'artwork_version':3,'genes':[marker]*8})
             snapshot=trait_snapshot(state)
@@ -213,12 +213,51 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured['system_prompt'][1]['text'].count('"mode": "visible"'),1)
         self.assertEqual(captured['max_tokens'],100)
         self.assertIn('at most 10 words',' '.join(p['text'] for p in captured['system_prompt']))
+    def test_idle_topic_avoids_recent_character_interests(self):
+        from api.routes.pet import idle_topic
+        from api.routes.pet_characters import CHARACTERS
+        for index, word, excluded in ((6,'paperwork',1),(7,'flour apron',1)):
+            state=PetState(**{**STATE,'artwork_version':3,'genes':[0]*6+[240+index,0]})
+            history=[{'role':'assistant','content':word}]
+            for _ in range(20):
+                self.assertNotEqual(idle_topic(state,history),CHARACTERS[index]['idle_topics'][excluded])
+        self.assertEqual(idle_topic(PetState(**STATE),[]),'')
+
+    async def test_idle_personalities_follow_current_character_after_switching(self):
+        from api.routes.pet_characters import CHARACTERS
+        pool=MagicMock(); captured={}
+        async def brain(**kwargs):
+            captured.update(kwargs)
+            if False: yield ''
+        for index,character in enumerate(CHARACTERS):
+            req=PetTurn(user_id='pet',session_id='test',transcript='A quiet thought',proactive=True,
+                        pet={**STATE,'name':'Olive','artwork_version':3,'genes':[0]*6+[240+index,0]})
+            with patch('api.routes.pet.resolve_pet_account',AsyncMock(return_value='pet')), \
+                 patch('api.routes.pet.load_conversation_messages',AsyncMock(return_value=[{'role':'assistant','content':'My next meeting is with a sandwich.'}])), \
+                 patch('api.routes.pet.stream_chat_with_tools',brain):
+                response=await pet_stream(req,None,pool,{})
+                async for _ in response.body_iterator: pass
+            current=trait_snapshot(req.pet)['character']
+            self.assertEqual(current['idle_topics'],character['idle_topics'])
+            self.assertEqual(current['idle_examples'],character['idle_examples'])
+            self.assertTrue(current['voice_style'])
+            prompts=' '.join(p['text'] for p in captured['system_prompt'])
+            self.assertIn('CHARACTER IDLE DIRECTION',prompts)
+            self.assertIn('event and exact food take priority',prompts)
+            self.assertIn('different topic and wording',prompts)
+            self.assertIn('not player speech',prompts)
+            self.assertNotIn("Player's words:",captured['user_message'])
+            self.assertIn(json.dumps(current),captured['user_message'])
+            self.assertEqual(captured['tools'],{})
+            self.assertEqual(captured['model_override'],PET_MODEL)
+        self.assertEqual(len({tuple(c['idle_topics']) for c in CHARACTERS}),8)
+
     async def test_personal_name_is_separate_from_character_and_old_introductions(self):
         captured={};pool=MagicMock()
         async def brain(**kwargs):
             captured.update(kwargs)
             if False:yield ''
-        for name,marker in (("Olive",240),("Olive",245),("Rosy Pig",245),("Anne-Marie",241),("Larry",246),("Olive",246)):
+        for name,marker in (("Olive",240),("Olive",245),("Rosy Pig",245),("Anne-Marie",241),("Larry",246),("Olive",246),("Olive",247),("Osono",247)):
             pool.pool.fetchval=AsyncMock(side_effect=[{'profile':'virtual_pet'},'pet'])
             req=PetTurn(user_id='pet',session_id='test',transcript="What's your name?",
                         pet={**STATE,'name':name,'artwork_version':3,'genes':[0]*6+[marker,0]})
