@@ -123,3 +123,35 @@ Logs: `/tmp/pet-multiplayer-build.log`, `/tmp/pet-multiplayer-flash.log`,
 `/tmp/pet-multiplayer-serial.log`, `/tmp/pet-mp-host-test.log`,
 `/tmp/pet-mp-gateway-live-tests.log`, `/tmp/pet-mp-backend-live-tests.log`,
 `/tmp/pet-mp-reboot-status.log` and `/tmp/pet-mp-final-connections.log`.
+
+## Second physical device — 2026-09-20
+
+The second board is `3c:dc:75:6e:b5:20`, verified as an ESP32-S3 with 8 MiB
+PSRAM and 16 MiB flash. Its factory boot identifies the Waveshare Touch AMOLED
+1.8 and SH8601 display. It now runs the same pet features as the first board,
+compiled from `1508596` with its own ignored identity header and separate build
+at `/Users/ron/IdeaProjects/pet-esp/build-3cdc756eb520/`. Application size is
+`0x29d090` (13% app partition free). All flash section hashes verified.
+
+Its root account is `pet-meadow-3cdc756eb520`; a new scoped token was issued and
+both boards belong to `little-meadow-home`. The original board's account/token
+were retained. The gateway was recreated to load both registrations, and config
+checks confirm distinct tokens restricted to the respective users. No Butler
+model or ordinary-user settings changed.
+
+The second device created Sprout (`fb6342e582ab2fc3`). A deliberate reboot loaded
+that same new baby at stage 1 with all needs at 100, confirming NVS persistence.
+Display/touch, microphone/speaker and normal room startup initialized; both voice
+and playdate authentication succeeded. Following the quick reboot, multiplayer
+reconnected after the stale socket expired. Logs show several SPI display queue
+errors during the 30-second boot capture; there was no panic/reset loop. Visual
+acceptance and a real two-person play/chat round remain to be checked on the toys.
+
+Its original partition table/NVS area was backed up under ignored
+`firmware/private/backups/`; NVS was not erased. This small backup does not contain
+the factory demo application. Logs are `/tmp/pet-second-build.log`,
+`/tmp/pet-second-flash.log` and `/tmp/pet-second-boot.log`.
+
+For the first two-device test, power both toys on, open **Play → Multiplayer** on
+both, and choose either **Ball game** or **Pet chat** before inviting the other
+pet. Names, characters and voices can be changed independently in Options.

@@ -61,4 +61,4 @@ with os.fdopen(fd,'w') as f:
     f.write('// Private, board-bound credentials. Never commit.\n#define PET_DEVICE_MAC '+json.dumps(mac)+'\n#define PET_AUTH_TOKEN '+json.dumps(token)+'\n')
 print(f'Registered {user}. Private build header: {header}')
 print('Restart the gateway to load registration, then build in a separate directory with:')
-print(f'./scripts/device.sh -B build-{mac} -DPET_IDENTITY_HEADER={header} build')
+print(f'./scripts/device.sh -B {root / "firmware" / ("build-" + mac)} -DPET_IDENTITY_HEADER={header} build')

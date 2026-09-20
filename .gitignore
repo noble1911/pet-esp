@@ -49,3 +49,6 @@ docs/previews/voice-v1/*.ppm
 # Per-device credentials and isolated firmware builds
 firmware/private/
 firmware/build-*/
+
+# idf.py resolves explicitly supplied relative build paths from the calling directory.
+/build-*/
