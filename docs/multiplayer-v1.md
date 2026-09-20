@@ -72,7 +72,7 @@ The provisioning script does not automatically flash or restart services.
 
 ## Validation and remaining hardware check
 
-The gateway suite has 60 passing tests, including real WebSocket framing,
+The gateway suite has 61 passing tests, including real WebSocket framing,
 explicit invitation acceptance, crossed invitations, household boundaries,
 turn/sequence validation, duplicate taps, replay, disconnect/reconnect/expiry,
 wrong receipt acknowledgements, durable receipts across server restart, and a
@@ -95,3 +95,31 @@ that version, and the buddy wall sticker is hidden until returning to multiplaye
 firmware. Do not erase NVS. Gateway rollback image: `esp-gateway:before-playdates`;
 source/compose backup: `~/pet-playdates-backup`. Preserve the reward volume even
 when temporarily running the older gateway.
+
+## Deployment — 2026-09-20
+
+Firmware `multiplayer-v1.1` (`4f48508`) is installed on the verified first board
+via `/dev/cu.usbmodem101`, with all flash hashes verified. The application uses
+`0x27fd90` bytes (17% app partition free). Moving the pair's buffers to PSRAM
+leaves 102,893 bytes unassigned in the static DIRAM report before runtime
+allocations. Boot capture identifies Olive (`6266ea62beb19b67`), restored at
+stage 3 with saved needs, and reaches the normal ready state without a panic.
+No NVS erase or reset-to-fresh was performed.
+
+A rapid USB reboot exposed a clean-close retry gap in the ESP WebSocket client.
+Version 1.1 enables clean-close reconnection and clears stale connection state.
+The first device authenticated to both voice and playdates at 14:20:45 UTC;
+a subsequent deliberate quick reboot recovered the game connection at
+14:21:25 after the old socket expired. This verifies the real firmware retry
+path, rather than only a simulated socket.
+
+Gateway commit `956a04d` is deployed, with all 61 tests passing inside the
+production container against the deployed modules. Butler commit `4d25586`
+is deployed and healthy; all 18 tests pass there. The production game ledger
+had zero reward rows after these checks: simulated tests did not award real
+pet stars. Only the first physical board is registered so far.
+
+Logs: `/tmp/pet-multiplayer-build.log`, `/tmp/pet-multiplayer-flash.log`,
+`/tmp/pet-multiplayer-serial.log`, `/tmp/pet-mp-host-test.log`,
+`/tmp/pet-mp-gateway-live-tests.log`, `/tmp/pet-mp-backend-live-tests.log`,
+`/tmp/pet-mp-reboot-status.log` and `/tmp/pet-mp-final-connections.log`.
