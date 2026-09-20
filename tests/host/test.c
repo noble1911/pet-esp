@@ -733,8 +733,8 @@ int main(void)
                 unsigned slot=s_arc.cups.slot[0];tap(14+20+110*slot+40,108+165);assert(s_arc.score==1);shot("arcade-cups-found");
                 tap(4,4);assert(s_view==GAMES && arcade_best(pet_state_get()->pet_id,ARCADE_CUPS)==1);
             } else if(game==ARCADE_PEGS){
-                tap(90,290);tap(180,419);assert(s_arc.pegs.flying);advance(600);shot("arcade-pegs-bounce");
-                for(unsigned i=0;i<1500 && !s_arc.done;i++){if(!s_arc.pegs.flying){arcade_aim(&s_arc,30+(i%7)*44,180);arcade_fire(&s_arc);}advance(60);}
+                tap(90,290);tap(180,419);assert(s_arc.pegs.flying);advance(600);shot("arcade-pegs-bounce");s_arc.run_limit_ms=60000;
+                for(unsigned i=0;i<1500 && !s_arc.done;i++){if(s_arc.level_clear)tap(180,419);if(!s_arc.pegs.flying){arcade_aim(&s_arc,30+(i%7)*44,180);arcade_fire(&s_arc);}advance(60);}
                 assert(s_arc.done && s_arc_completed);shot("arcade-pegs-score");
             } else if(game==ARCADE_TILT){
                 test_tilt_x=.25f;advance(900);assert(s_arc.tilt.x>170);shot("arcade-tilt-playing");
@@ -752,6 +752,17 @@ int main(void)
             assert(arcade_best(pet_state_get()->pet_id,(arcade_kind_t)game)==record);
         }
         assert(arcade_best(pet_state_get()->pet_id+1,ARCADE_MEMORY)==0);
+        // The Next controls preserve a run; Play again starts a fresh score.
+        for(unsigned kind=ARCADE_PEGS;kind<=ARCADE_TILT;kind++){
+            s_arc_kind=kind;show(ARCADE);tap(kind==ARCADE_TILT?100:180,419);
+            s_arc.score=500;s_arc.level_clear=true;advance(60);
+            shot(kind==ARCADE_PEGS?"arcade-pegs-next":"arcade-tilt-next");
+            tap(kind==ARCADE_TILT?100:180,419);
+            assert(s_arc.level==2 && !s_arc.level_clear && s_arc.score==500);
+            shot(kind==ARCADE_PEGS?"arcade-pegs-level2":"arcade-tilt-level2");
+            s_arc.done=true;advance(60);tap(kind==ARCADE_TILT?100:180,419);
+            assert(s_arc.level==1 && s_arc.score==0 && !s_arc_started);
+        }
         s_arc_kind=ARCADE_MEMORY;show(ARCADE);tap(180,419);
         unsigned reward_before=pet_state_get()->evolution_progress;
         fail_save=true;s_arc.score=1200;s_arc.done=true;advance(80);

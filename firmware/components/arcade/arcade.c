@@ -11,7 +11,20 @@ static void cup_round(arcade_t *g)
     g->cups.goal=3+(g->cups.streak<10?g->cups.streak/2:5);
     g->cups.duration=650-(g->cups.streak<10?g->cups.streak:10)*30;
 }
-static const float rocks[3][2]={{88,80},{250,148},{122,210}};
+static void tilt_layout(arcade_t *g)
+{
+    unsigned difficulty=g->level<7?g->level:7;
+    g->tilt.goal=4+difficulty;
+    g->tilt.rock_count=3+(difficulty-1)/2;
+    // One rock per roomy cell; seeded jitter and mirror make fresh gardens.
+    static const unsigned cells[6][2]={{75,73},{255,173},{75,205},{255,67},{165,57},{169,216}};
+    bool mirror=random_next(g)&1;
+    for(unsigned i=0;i<g->tilt.rock_count;i++){
+        unsigned x=cells[i][0]+random_next(g)%17-8;
+        g->tilt.rx[i]=mirror?340-x:x;
+        g->tilt.ry[i]=cells[i][1]+random_next(g)%13-6;
+    }
+}
 static void peg_layout(arcade_t *g)
 {
     unsigned layout=random_next(g)%3;
@@ -47,7 +60,7 @@ static void star_place(arcade_t *g)
     for(unsigned tries=0;tries<64;tries++) {
         float x=28+random_next(g)%285,y=28+random_next(g)%193;
         bool good=hypotf(x-g->tilt.star_x,y-g->tilt.star_y)>65;
-        for(unsigned i=0;i<3;i++)if(hypotf(x-rocks[i][0],y-rocks[i][1])<40)good=false;
+        for(unsigned i=0;i<g->tilt.rock_count;i++)if(hypotf(x-g->tilt.rx[i],y-g->tilt.ry[i])<45)good=false;
         if(good){g->tilt.star_x=x;g->tilt.star_y=y;return;}
     }
     // Even the fallback follows the shared course, independent of player movement.
@@ -55,15 +68,34 @@ static void star_place(arcade_t *g)
 }
 void arcade_start(arcade_t *g,arcade_kind_t kind,uint32_t seed)
 {
-    memset(g,0,sizeof *g);g->kind=kind;g->rng=seed?seed:1;
+    memset(g,0,sizeof *g);g->kind=kind;g->rng=seed?seed:1;g->level=1;
     if(kind==ARCADE_CUPS){g->cups.lives=3;for(unsigned i=0;i<3;i++)g->cups.slot[i]=i;cup_round(g);}
     if(kind==ARCADE_PEGS){g->pegs.balls=5;g->pegs.live=(UINT64_C(1)<<33)-1;g->pegs.x=g->pegs.bucket=170;g->pegs.y=12;peg_layout(g);}
-    if(kind==ARCADE_TILT){g->tilt.x=170;g->tilt.y=128;g->tilt.star_x=170;g->tilt.star_y=128;star_place(g);}
+    if(kind==ARCADE_TILT){g->tilt.x=170;g->tilt.y=128;g->tilt.star_x=170;g->tilt.star_y=128;tilt_layout(g);star_place(g);}
     if(kind==ARCADE_MEMORY){
         g->memory.first=g->memory.second=-1;
         for(unsigned i=0;i<12;i++)g->memory.deck[i]=i/2;
         for(unsigned i=11;i>0;i--){unsigned j=random_next(g)%(i+1);uint8_t t=g->memory.deck[i];g->memory.deck[i]=g->memory.deck[j];g->memory.deck[j]=t;}
     }
+}
+unsigned arcade_orange_left(const arcade_t *g)
+{
+    uint64_t remaining=g->pegs.live&g->pegs.gold;unsigned count=0;
+    while(remaining){count++;remaining&=remaining-1;}return count;
+}
+bool arcade_next_level(arcade_t *g)
+{
+    if(!g->level_clear || g->done)return false;
+    g->level++;g->level_ms=0;g->level_clear=false;g->burst_ms=0;
+    if(g->kind==ARCADE_PEGS){
+        unsigned balls=g->pegs.balls;memset(&g->pegs,0,sizeof g->pegs);
+        g->pegs.balls=balls<5?5:balls;g->pegs.live=(UINT64_C(1)<<33)-1;
+        g->pegs.x=g->pegs.bucket=170;g->pegs.y=12;peg_layout(g);
+    } else if(g->kind==ARCADE_TILT){
+        memset(&g->tilt,0,sizeof g->tilt);g->tilt.x=g->tilt.star_x=170;g->tilt.y=g->tilt.star_y=128;
+        tilt_layout(g);star_place(g);
+    } else return false;
+    return true;
 }
 void arcade_peg_pos(const arcade_t *g,unsigned p,float *x,float *y)
 {
@@ -96,11 +128,11 @@ bool arcade_pick(arcade_t *g,unsigned i)
     }
     return false;
 }
-void arcade_aim(arcade_t *g,float x,float y) {if(g->kind==ARCADE_PEGS && !g->pegs.flying)g->pegs.aim=clamp(atan2f(x-170,fmaxf(1,y-12)),-1.48f,1.48f);}
+void arcade_aim(arcade_t *g,float x,float y) {if(g->kind==ARCADE_PEGS && !g->pegs.flying && !g->level_clear){(void)y;g->pegs.aim=clamp((x-170)/158.f*2.15f,-2.15f,2.15f);}}
 bool arcade_fire(arcade_t *g)
 {
-    if(g->kind!=ARCADE_PEGS || g->done || g->pegs.flying || !g->pegs.balls)return false;
-    g->pegs.x=170;g->pegs.y=12;g->pegs.vx=sinf(g->pegs.aim)*195;g->pegs.vy=cosf(g->pegs.aim)*195;
+    if(g->kind!=ARCADE_PEGS || g->done || g->level_clear || g->pegs.flying || !g->pegs.balls)return false;
+    g->pegs.x=170;g->pegs.y=12;g->pegs.vx=sinf(g->pegs.aim)*250;g->pegs.vy=cosf(g->pegs.aim)*250;
     g->pegs.balls--;g->pegs.hits=g->pegs.shot_ms=0;g->pegs.flying=true;return true;
 }
 static void peg_tick(arcade_t *g,unsigned ms)
@@ -109,7 +141,7 @@ static void peg_tick(arcade_t *g,unsigned ms)
     if(!g->pegs.flying)return;
     g->pegs.shot_ms+=ms;g->pegs.vy+=350*dt;g->pegs.x+=g->pegs.vx*dt;g->pegs.y+=g->pegs.vy*dt;
     if(g->pegs.x<9 || g->pegs.x>331){g->pegs.x=clamp(g->pegs.x,9,331);g->pegs.vx=-g->pegs.vx*.92f;}
-    if(g->pegs.y<7){g->pegs.y=7;g->pegs.vy=fabsf(g->pegs.vy);}
+    // Shallow upward shots may arc above the board and return naturally.
     for(unsigned i=0;i<33;i++)if(g->pegs.live&(UINT64_C(1)<<i)){
         float x,y;arcade_peg_pos(g,i,&x,&y);float dx=g->pegs.x-x,dy=g->pegs.y-y,d=hypotf(dx,dy);
         if(d<14){
@@ -122,10 +154,11 @@ static void peg_tick(arcade_t *g,unsigned ms)
             g->burst_x=x;g->burst_y=y;g->burst_ms=450;
         }
     }
-    if(!g->pegs.live){g->score+=g->pegs.balls*150;g->done=true;g->pegs.flying=false;return;}
     if(g->pegs.y>242 || g->pegs.shot_ms>=8000){
-        if(g->pegs.y>242 && fabsf(g->pegs.x-g->pegs.bucket)<32){g->score+=100;g->cue++;if(g->pegs.catches++<3)g->pegs.balls++;}
-        g->pegs.flying=false;if(!g->pegs.balls)g->done=true;
+        if(g->pegs.y>242 && fabsf(g->pegs.x-g->pegs.bucket)<32){g->score+=100;g->cue++;g->pegs.catches++;g->pegs.balls++;g->pegs.bonus_ms=1600;}
+        g->pegs.flying=false;
+        if(!arcade_orange_left(g)){g->score+=g->pegs.balls*150;g->level_clear=true;g->cue++;}
+        else if(!g->pegs.balls)g->done=true;
     }
 }
 static void tilt_tick(arcade_t *g,unsigned ms,float ax,float ay)
@@ -136,19 +169,22 @@ static void tilt_tick(arcade_t *g,unsigned ms,float ax,float ay)
     g->tilt.x+=g->tilt.vx*dt;g->tilt.y+=g->tilt.vy*dt;
     if(g->tilt.x<12 || g->tilt.x>328){g->tilt.x=clamp(g->tilt.x,12,328);g->tilt.vx*=-.4f;}
     if(g->tilt.y<12 || g->tilt.y>244){g->tilt.y=clamp(g->tilt.y,12,244);g->tilt.vy*=-.4f;}
-    for(unsigned i=0;i<3;i++){
-        float dx=g->tilt.x-rocks[i][0],dy=g->tilt.y-rocks[i][1],d=hypotf(dx,dy);
-        if(d<29){if(d<.01f){dx=1;dy=0;d=1;}dx/=d;dy/=d;g->tilt.x=rocks[i][0]+dx*29;g->tilt.y=rocks[i][1]+dy*29;
+    for(unsigned i=0;i<g->tilt.rock_count;i++){
+        float dx=g->tilt.x-g->tilt.rx[i],dy=g->tilt.y-g->tilt.ry[i],d=hypotf(dx,dy);
+        if(d<29){if(d<.01f){dx=1;dy=0;d=1;}dx/=d;dy/=d;g->tilt.x=g->tilt.rx[i]+dx*29;g->tilt.y=g->tilt.ry[i]+dy*29;
             float dot=g->tilt.vx*dx+g->tilt.vy*dy;if(dot<0){g->tilt.vx-=1.4f*dot*dx;g->tilt.vy-=1.4f*dot*dy;}}
     }
-    if(hypotf(g->tilt.x-g->tilt.star_x,g->tilt.y-g->tilt.star_y)<23){g->tilt.stars++;g->score+=100;g->cue++;g->burst_x=g->tilt.star_x;g->burst_y=g->tilt.star_y;g->burst_ms=450;g->burst_points=100;star_place(g);}
-    if(g->elapsed>=45000)g->done=true;
+    if(hypotf(g->tilt.x-g->tilt.star_x,g->tilt.y-g->tilt.star_y)<23){g->tilt.stars++;g->score+=100;g->cue++;g->burst_x=g->tilt.star_x;g->burst_y=g->tilt.star_y;g->burst_ms=450;g->burst_points=100;if(g->tilt.stars>=g->tilt.goal){g->level_clear=true;g->tilt.vx=g->tilt.vy=0;}else star_place(g);}
+    if(g->level_ms>=45000 && !g->level_clear)g->done=true;
 }
 void arcade_tick(arcade_t *g,unsigned ms,float ax,float ay)
 {
     if(g->done)return;
     // Deterministic small steps prevent tunnelling, independent of render cadence.
-    while(ms && !g->done){unsigned step=ms>10?10:ms;ms-=step;g->elapsed+=step;g->phase_ms+=step;g->burst_ms=g->burst_ms>step?g->burst_ms-step:0;
+    while(ms && !g->done){unsigned step=ms>10?10:ms;ms-=step;g->elapsed+=step;
+        if(g->run_limit_ms && g->elapsed>=g->run_limit_ms){g->done=true;g->level_clear=false;break;}
+        if(g->level_clear)continue;
+        g->level_ms+=step;g->phase_ms+=step;g->pegs.bonus_ms=g->pegs.bonus_ms>step?g->pegs.bonus_ms-step:0;g->burst_ms=g->burst_ms>step?g->burst_ms-step:0;
         if(g->kind==ARCADE_PEGS)peg_tick(g,step);
         else if(g->kind==ARCADE_TILT)tilt_tick(g,step,ax,ay);
         else if(g->kind==ARCADE_MEMORY && g->memory.second>=0 && g->phase_ms>=900){

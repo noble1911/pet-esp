@@ -63,7 +63,7 @@ static void receive(void)
         next.online=cJSON_IsTrue(cJSON_GetObjectItem(o,"online"));next.again=cJSON_IsTrue(cJSON_GetObjectItem(o,"again"));
         const char *modes[]={"ball","chat","pegs","tilt","memory"};
         for(unsigned i=0;i<5;i++)if(!strcmp(string(o,"mode"),modes[i]))next.mode=(mp_mode_t)i;
-        next.seed=number(o,"seed",UINT32_MAX);next.score=number(o,"score",20000);next.peer_score=number(o,"peer_score",20000);
+        next.seed=number(o,"seed",UINT32_MAX);next.score=number(o,"score",200000);next.peer_score=number(o,"peer_score",200000);
         next.countdown_ms=number(o,"countdown_ms",3000);next.remaining_ms=number(o,"remaining_ms",240000);
         next.ready=cJSON_IsTrue(cJSON_GetObjectItem(o,"ready"));next.started=cJSON_IsTrue(cJSON_GetObjectItem(o,"started"));
         next.submitted=cJSON_IsTrue(cJSON_GetObjectItem(o,"submitted"));next.peer_submitted=cJSON_IsTrue(cJSON_GetObjectItem(o,"peer_submitted"));
@@ -144,7 +144,7 @@ static void worker(void *arg)
     for(;;) {
         if(atomic_exchange(&s_hello,false)) {
             cJSON *o=message("hello");cJSON_AddNumberToObject(o,"proto",1);cJSON_AddNumberToObject(o,"artwork",3);
-            cJSON_AddNumberToObject(o,"chat",1);cJSON_AddNumberToObject(o,"games",1);
+            cJSON_AddNumberToObject(o,"chat",1);cJSON_AddNumberToObject(o,"games",2);
             cJSON_AddStringToObject(o,"user_id",voice_device_id());cJSON_AddStringToObject(o,"device_token",voice_device_token());
             add_pet(o);send_json(o);sent_epoch=UINT32_MAX;ping=xTaskGetTickCount();
         }

@@ -716,7 +716,7 @@ static void make_games(void)
     const char *hints[]={"Follow the cups. Best streak!","Aim, bounce, catch a bonus","Roll gently and collect stars","Turn two cards. Find a pair"};
     for(unsigned i=0;i<ARCADE_COUNT;i++) {
         lv_obj_t *b=button(s_root,24,106+i*82,320,74,(uint32_t[]){PINK,0xffecd1,MINT,BLUE}[i],arcade_menu_cb,i);
-        art(b,i==0?pixel_decoration(0):i==1?pixel_icon(1):i==2?pixel_icon(4):pixel_collectible(4),12,14,i==0?256:384);
+        if(i==0)arc_cup_icon(b);else art(b,i==1?pixel_icon(1):i==2?pixel_icon(4):pixel_collectible(4),12,14,384);
         label(b,arcade_names[i],62,14,250,true);label(b,hints[i],59,45,254,false);
     }
 }
@@ -1008,8 +1008,8 @@ static void make_home(void)
 }
 static void show(View view)
 {
-    if(s_view==ARCADE && view!=ARCADE && s_arc_kind==ARCADE_CUPS)
-        arcade_save_best(pet_state_get()->pet_id,ARCADE_CUPS,s_arc.cups.best);
+    if(s_view==ARCADE && view!=ARCADE)
+        arcade_save_best(pet_state_get()->pet_id,s_arc_kind,s_arc.score);
     if(view==ARCADE && s_view!=ARCADE) {voice_cancel();audio_stop_tune();s_talking=false;}
     if(s_view==VOICES && view!=VOICES) {voice_cancel();s_preview_playing=false;}
     if(view==VOICES && s_view!=VOICES) {

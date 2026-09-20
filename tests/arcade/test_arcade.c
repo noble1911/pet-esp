@@ -54,18 +54,63 @@ int main(void)
         arcade_aim(&g,seed%2?0:340,12);assert(arcade_fire(&g));assert(!arcade_fire(&g));copy=g;
         arcade_tick(&copy,4000,0,0);for(unsigned i=0;i<400;i++)arcade_tick(&g,10,0,0);
         assert(g.score==copy.score && g.pegs.live==copy.pegs.live && fabsf(g.pegs.x-copy.pegs.x)<.001f);
-        for(unsigned n=0;n<7000 && !g.done;n++){
+        for(unsigned n=0;n<7000 && !g.done && !g.level_clear;n++){
             if(!g.pegs.flying){arcade_aim(&g,(n%7)*50,200);arcade_fire(&g);}arcade_tick(&g,10,0,0);
             assert(isfinite(g.pegs.x) && isfinite(g.pegs.vy) && g.pegs.balls<=5 && g.pegs.x>=9 && g.pegs.x<=331);
         }
-        assert(g.done && g.score<=20000 && g.score%5==0);
+        assert((g.done || g.level_clear) && g.score<=20000 && g.score%5==0);
         arcade_start(&g,ARCADE_TILT,seed);
         for(unsigned i=0;i<4500;i++){
             arcade_tick(&g,10,sinf(i*.017f),cosf(i*.021f));
             assert(isfinite(g.tilt.x) && g.tilt.x>=12 && g.tilt.x<=328 && g.tilt.y>=12 && g.tilt.y<=244);
         }
-        assert(g.done && g.elapsed==45000 && g.score%100==0);
+        assert((g.done || g.level_clear) && g.score%100==0);
+        if(g.level_clear)g.done=true;
         arcade_t stop=g;arcade_tick(&g,10000,1,1);assert(!memcmp(&g,&stop,sizeof g));
     }
+    // Every bucket catch returns a ball, including the fourth and later catches.
+    arcade_t g;arcade_start(&g,ARCADE_PEGS,987);
+    for(unsigned i=0;i<9;i++){
+        unsigned balls=g.pegs.balls;assert(arcade_fire(&g));
+        g.pegs.x=170+sinf((g.elapsed+10)/850.f)*112;g.pegs.y=242;g.pegs.vx=0;g.pegs.vy=100;
+        arcade_tick(&g,10,0,0);assert(g.pegs.balls==balls && g.pegs.bonus_ms && !g.done);
+    }
+    // Clearing orange is sufficient; blue pegs remain. Last-ball win advances.
+    g.pegs.live&=~g.pegs.gold;g.pegs.balls=1;assert(arcade_fire(&g));
+    g.pegs.x=10;g.pegs.y=242;g.pegs.vx=0;g.pegs.vy=100;
+    arcade_tick(&g,10,0,0);assert(g.level_clear && !g.done && g.pegs.live);
+    unsigned score=g.score;assert(arcade_next_level(&g));
+    assert(g.level==2 && g.score==score && g.pegs.balls==5 && arcade_orange_left(&g)==11);
+    arcade_start(&g,ARCADE_PEGS,987);assert(g.score==0 && g.level==1);
+    // Upward launch really arcs above the board instead of bouncing off its top.
+    arcade_aim(&g,330,0);assert(g.pegs.aim>1.5708f);assert(arcade_fire(&g));
+    assert(g.pegs.vy<0);arcade_tick(&g,100,0,0);assert(g.pegs.y<7 && g.pegs.vy<0);
+    // Actual physics can now reach an isolated upper peg on either far edge.
+    for(unsigned side=0;side<2;side++){
+        bool hit=false;
+        for(unsigned aim=0;aim<=340 && !hit;aim++){
+            arcade_start(&g,ARCADE_PEGS,22);g.pegs.live=g.pegs.gold=1;
+            g.pegs.px[0]=side?310:30;g.pegs.py[0]=45;
+            arcade_aim(&g,aim,0);assert(arcade_fire(&g));
+            for(unsigned t=0;t<200 && g.pegs.flying;t++)arcade_tick(&g,10,0,0);
+            hit=!g.pegs.live;
+        }
+        assert(hit);
+    }
+    // Seeded gardens progress without dropping score and reset their own timer.
+    arcade_start(&g,ARCADE_TILT,44);
+    for(unsigned level=1;level<=10;level++){
+        assert(g.level==level && g.tilt.goal<=11 && g.tilt.rock_count<=6);
+        unsigned goal=g.tilt.goal;
+        for(unsigned i=0;i<goal;i++){
+            g.tilt.x=g.tilt.star_x;g.tilt.y=g.tilt.star_y;arcade_tick(&g,10,0,0);
+        }
+        assert(g.level_clear && !g.done);score=g.score;
+        arcade_tick(&g,1000,0,0);assert(g.score==score);
+        assert(arcade_next_level(&g) && g.score==score && g.level_ms==0);
+    }
+    arcade_start(&g,ARCADE_TILT,44);arcade_tick(&g,45000,0,0);assert(g.done && g.score==0);
+    arcade_start(&g,ARCADE_TILT,44);g.run_limit_ms=180000;g.elapsed=179990;g.level_clear=true;
+    arcade_tick(&g,10,0,0);assert(g.done && !g.level_clear && !arcade_next_level(&g));
     printf("PASS: 400 seeds, cup permutations/lives, memory pairs, peg physics/time steps, tilt bounds/time and score invariants\n");
 }
