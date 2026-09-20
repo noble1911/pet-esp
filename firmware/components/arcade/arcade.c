@@ -12,6 +12,36 @@ static void cup_round(arcade_t *g)
     g->cups.duration=650-(g->cups.streak<10?g->cups.streak:10)*30;
 }
 static const float rocks[3][2]={{88,80},{250,148},{122,210}};
+static void peg_layout(arcade_t *g)
+{
+    unsigned layout=random_next(g)%3;
+    float rotation=(random_next(g)%6283)/1000.f;
+    for(unsigned p=0;p<33;p++) {
+        float x,y;
+        if(layout==2) {
+            // Three concentric rings with room between pegs for the ball.
+            unsigned ring=p<8?0:p<19?1:2;
+            unsigned index=p-(ring==0?0:ring==1?8:19),count=ring==0?8:ring==1?11:14;
+            float angle=rotation+index*6.2831853f/count;
+            x=170+(ring==0?45:ring==1?90:140)*cosf(angle);
+            y=128+(ring==0?34:ring==1?60:90)*sinf(angle);
+        } else {
+            unsigned row=0,col=p;
+            while(col>=(row%2?5u:6u)){col-=row%2?5:6;row++;}
+            x=45+col*50+(row%2?25:0);
+            y=layout==0?52+row*31:42+row*29+fabsf(x-170)*.18f;
+            x+=(int)(random_next(g)%13)-6;
+            y+=(int)(random_next(g)%5)-2;
+        }
+        g->pegs.px[p]=(uint16_t)lroundf(x);g->pegs.py[p]=(uint16_t)lroundf(y);
+    }
+    // Exactly eleven gold pegs, chosen without replacement for every board.
+    uint8_t order[33];for(unsigned p=0;p<33;p++)order[p]=p;
+    for(unsigned p=0;p<11;p++){
+        unsigned j=p+random_next(g)%(33-p);uint8_t t=order[p];order[p]=order[j];order[j]=t;
+        g->pegs.gold|=UINT64_C(1)<<order[p];
+    }
+}
 static void star_place(arcade_t *g)
 {
     for(unsigned tries=0;tries<64;tries++) {
@@ -27,7 +57,7 @@ void arcade_start(arcade_t *g,arcade_kind_t kind,uint32_t seed)
 {
     memset(g,0,sizeof *g);g->kind=kind;g->rng=seed?seed:1;
     if(kind==ARCADE_CUPS){g->cups.lives=3;for(unsigned i=0;i<3;i++)g->cups.slot[i]=i;cup_round(g);}
-    if(kind==ARCADE_PEGS){g->pegs.balls=5;g->pegs.live=(UINT64_C(1)<<33)-1;g->pegs.x=170;g->pegs.y=12;}
+    if(kind==ARCADE_PEGS){g->pegs.balls=5;g->pegs.live=(UINT64_C(1)<<33)-1;g->pegs.x=g->pegs.bucket=170;g->pegs.y=12;peg_layout(g);}
     if(kind==ARCADE_TILT){g->tilt.x=170;g->tilt.y=128;g->tilt.star_x=170;g->tilt.star_y=128;star_place(g);}
     if(kind==ARCADE_MEMORY){
         g->memory.first=g->memory.second=-1;
@@ -35,12 +65,11 @@ void arcade_start(arcade_t *g,arcade_kind_t kind,uint32_t seed)
         for(unsigned i=11;i>0;i--){unsigned j=random_next(g)%(i+1);uint8_t t=g->memory.deck[i];g->memory.deck[i]=g->memory.deck[j];g->memory.deck[j]=t;}
     }
 }
-void arcade_peg_pos(unsigned p,float *x,float *y)
+void arcade_peg_pos(const arcade_t *g,unsigned p,float *x,float *y)
 {
-    unsigned row=0;while(p>=(row%2?5u:6u)){p-=row%2?5:6;row++;}
-    *x=45+p*50+(row%2?25:0);*y=52+row*31;
+    *x=g->pegs.px[p];*y=g->pegs.py[p];
 }
-bool arcade_peg_gold(unsigned p) {return p%3==1;}
+bool arcade_peg_gold(const arcade_t *g,unsigned p) {return (g->pegs.gold&(UINT64_C(1)<<p))!=0;}
 void arcade_cup_pos(const arcade_t *g,unsigned cup,float *x,float *y)
 {
     *x=20+g->cups.slot[cup]*110;*y=128;
@@ -67,7 +96,7 @@ bool arcade_pick(arcade_t *g,unsigned i)
     }
     return false;
 }
-void arcade_aim(arcade_t *g,float x,float y) {if(g->kind==ARCADE_PEGS && !g->pegs.flying)g->pegs.aim=clamp(atan2f(x-170,fmaxf(30,y-12)),-1.05f,1.05f);}
+void arcade_aim(arcade_t *g,float x,float y) {if(g->kind==ARCADE_PEGS && !g->pegs.flying)g->pegs.aim=clamp(atan2f(x-170,fmaxf(1,y-12)),-1.48f,1.48f);}
 bool arcade_fire(arcade_t *g)
 {
     if(g->kind!=ARCADE_PEGS || g->done || g->pegs.flying || !g->pegs.balls)return false;
@@ -82,14 +111,14 @@ static void peg_tick(arcade_t *g,unsigned ms)
     if(g->pegs.x<9 || g->pegs.x>331){g->pegs.x=clamp(g->pegs.x,9,331);g->pegs.vx=-g->pegs.vx*.92f;}
     if(g->pegs.y<7){g->pegs.y=7;g->pegs.vy=fabsf(g->pegs.vy);}
     for(unsigned i=0;i<33;i++)if(g->pegs.live&(UINT64_C(1)<<i)){
-        float x,y;arcade_peg_pos(i,&x,&y);float dx=g->pegs.x-x,dy=g->pegs.y-y,d=hypotf(dx,dy);
+        float x,y;arcade_peg_pos(g,i,&x,&y);float dx=g->pegs.x-x,dy=g->pegs.y-y,d=hypotf(dx,dy);
         if(d<14){
             if(d<.01f){dx=0;dy=-1;d=1;}dx/=d;dy/=d;
             g->pegs.x=x+dx*14;g->pegs.y=y+dy*14;
             float dot=g->pegs.vx*dx+g->pegs.vy*dy;
             if(dot<0){g->pegs.vx-=1.75f*dot*dx;g->pegs.vy-=1.75f*dot*dy;}
             g->pegs.live&=~(UINT64_C(1)<<i);g->pegs.hits++;g->cue++;
-            g->burst_points=(arcade_peg_gold(i)?50:10)+(g->pegs.hits-1)*5;g->score+=g->burst_points;
+            g->burst_points=(arcade_peg_gold(g,i)?50:10)+(g->pegs.hits-1)*5;g->score+=g->burst_points;
             g->burst_x=x;g->burst_y=y;g->burst_ms=450;
         }
     }

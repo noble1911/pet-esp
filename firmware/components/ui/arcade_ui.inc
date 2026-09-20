@@ -99,7 +99,7 @@ static void make_arcade(const mp_state_t *mp)
             shape(cup,8,9,6,60,0xffc9cf,0);shape(cup,5,75,70,7,INK,0);shape(cup,6,5,68,6,0xffd8d6,0);
         }
     } else if(s_arc_kind==ARCADE_PEGS){
-        for(unsigned i=0;i<33;i++){float x,y;arcade_peg_pos(i,&x,&y);s_arc_pieces[i]=shape(s_arc_field,x-8,y-8,16,16,arcade_peg_gold(i)?0xf49a59:0x709bbb,0);arc_round(s_arc_pieces[i],8);shape(s_arc_pieces[i],4,3,5,4,CREAM,0);}
+        for(unsigned i=0;i<33;i++){float x,y;arcade_peg_pos(&s_arc,i,&x,&y);s_arc_pieces[i]=shape(s_arc_field,x-8,y-8,16,16,arcade_peg_gold(&s_arc,i)?0xf49a59:0x709bbb,0);arc_round(s_arc_pieces[i],8);shape(s_arc_pieces[i],4,3,5,4,CREAM,0);}
         for(unsigned i=0;i<9;i++){s_arc_dots[i]=shape(s_arc_field,0,0,3,3,INK,0);arc_round(s_arc_dots[i],2);}
         s_arc_bucket=shape(s_arc_field,138,242,64,10,0xe494a5,0);shape(s_arc_bucket,4,0,56,3,CREAM,0);
         s_arc_ball=shape(s_arc_field,164,6,12,12,CREAM,0);arc_round(s_arc_ball,6);lv_obj_set_style_border_width(s_arc_ball,2,0);lv_obj_set_style_border_color(s_arc_ball,lv_color_hex(INK),0);

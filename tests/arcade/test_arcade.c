@@ -37,7 +37,21 @@ int main(void)
             arcade_tick(&g,900,0,0);
         }
         assert(g.done && g.score==600 && g.memory.moves==26);
-        arcade_start(&g,ARCADE_PEGS,seed);arcade_aim(&g,(seed%7)*50,180);assert(arcade_fire(&g));assert(!arcade_fire(&g));copy=g;
+        arcade_start(&g,ARCADE_PEGS,seed);arcade_start(&copy,ARCADE_PEGS,seed);
+        assert(!memcmp(&g.pegs,&copy.pegs,sizeof g.pegs));
+        arcade_t different;arcade_start(&different,ARCADE_PEGS,seed+1);
+        assert(memcmp(g.pegs.px,different.pegs.px,sizeof g.pegs.px) || g.pegs.gold!=different.pegs.gold);
+        unsigned gold=0;
+        for(unsigned i=0;i<33;i++){
+            float x,y;arcade_peg_pos(&g,i,&x,&y);gold+=arcade_peg_gold(&g,i);
+            assert(x>=20 && x<=320 && y>=30 && y<=225);
+            for(unsigned j=0;j<i;j++){float xx,yy;arcade_peg_pos(&g,j,&xx,&yy);assert(hypotf(x-xx,y-yy)>=23);}
+        }
+        assert(gold==11);
+        arcade_aim(&g,0,12);assert(g.pegs.aim< -1.4f);
+        arcade_aim(&g,340,12);assert(g.pegs.aim>1.4f);
+        arcade_aim(&g,170,200);assert(g.pegs.aim==0);
+        arcade_aim(&g,seed%2?0:340,12);assert(arcade_fire(&g));assert(!arcade_fire(&g));copy=g;
         arcade_tick(&copy,4000,0,0);for(unsigned i=0;i<400;i++)arcade_tick(&g,10,0,0);
         assert(g.score==copy.score && g.pegs.live==copy.pegs.live && fabsf(g.pegs.x-copy.pegs.x)<.001f);
         for(unsigned n=0;n<7000 && !g.done;n++){

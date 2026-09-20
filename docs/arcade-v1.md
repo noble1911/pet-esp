@@ -6,7 +6,7 @@ collectibles and Pet chat remain available. All eight characters fit.
 | Game | Controls and scoring |
 | --- | --- |
 | Peekaboo Cups | Watch the pet hide, follow three shuffling cups, then tap a cup. Three hearts; faster shuffles as the streak grows. Record is the best streak, also saved when leaving early. |
-| Peg Bounce | Drag anywhere on the board to aim, then press Launch. Five balls, 33 pegs, visible bounces, floating points and a moving bucket. Blue pegs give 10, gold 50, with 5 extra per earlier hit in that shot. The bucket gives 100 and up to three extra balls. Clearing the board adds 150 per remaining ball. |
+| Peg Bounce | Drag anywhere on the board to aim, then press Launch. Aim up to 85 degrees either side of straight down for shallow shots. Each new board chooses staggered rows, chevrons or rings, with 11 randomly placed gold pegs out of 33. Five balls, visible bounces, floating points and a moving bucket. Blue pegs give 10, gold 50, with 5 extra per earlier hit in that shot. The bucket gives 100 and up to three extra balls. Clearing the board adds 150 per remaining ball. |
 | Tilt Garden | Hold comfortably and start; this centres the marble controls. Tilt gently to collect 100-point stars around three rocks for 45 seconds. Centre tilt recalibrates; Use touch provides a hold-and-drag alternative. |
 | Memory Pairs | Twelve cards, six picture pairs. Tap two; mismatches remain visible briefly. No solo time limit. Each pair gives 100, with up to 600 extra for accuracy: 50 less per turn beyond the perfect six. Score never falls below 600 on completion. |
 
@@ -45,7 +45,7 @@ LLM calls or voice settings change for these games.
 This board has 16 MiB physical flash, but its current app partition is 3 MiB.
 The second-device image is approximately 2.63 MiB, leaving about 380 KiB (12%) in
 that app partition. The arcade update adds about 16 KiB over voice-choice-v1.
-Static DIRAM use is 240,883 bytes, leaving 100,877 bytes, a 1,512-byte increase.
+Static DIRAM use is 241,011 bytes, leaving 100,749 bytes, a 1,640-byte increase.
 The simulation allocates no heap; the UI reuses the pet artwork and existing
 collectible icons. The board's 8 MiB PSRAM remains available for existing graphics
 and audio buffers. No character removal, asset repartition or NVS erase is needed.
@@ -60,12 +60,15 @@ Sources: [Waveshare Gravitysphere](https://github.com/waveshareteam/ESP32-S3-Tou
 
 ## Validation and rollback
 
-- Host UI suite: direct drawing and 40-row partial refresh, all four menus and
+- Host UI suite: direct drawing and 16-row partial refresh (also previously
+  checked at 40 rows), all four menus and
   games, high scores, save failures, care reward retry, multiplayer readiness,
   hidden cards, turns and results. Previews above are rendered from the real UI.
 - Pure engine: 400 seeds under AddressSanitizer and UndefinedBehaviorSanitizer;
   cup permutations/lives, perfect and mistake-heavy memory rounds, deterministic
-  peg time steps/termination, tilt bounds/timing, valid score increments.
+  peg time steps/termination, tilt bounds/timing, valid score increments. Peg
+  checks also cover nearly horizontal launches, deterministic shared layouts,
+  seed variation, exactly 11 gold pegs, screen bounds and minimum peg spacing.
 - Gateway: 112 tests including real two-WebSocket Peg Bounce and Memory rounds,
   score rejection, hidden cards, replay, disconnects and reward-save retry.
 - Separate ESP-IDF builds preserve each device's own identity header.
@@ -80,3 +83,22 @@ Restore the gateway source from `ac0a195`; the previous deployed image is tagged
 Physical feel, tilt orientation in the hand, touch targets, audio balance and
 two-device gameplay still need a hands-on acceptance pass; automated tests cannot
 establish those qualities.
+
+## Display stability follow-up
+
+After the first arcade flash, the user reported a temporary screen freeze and
+then confirmed all four games played nicely. A serial capture showed hundreds
+of SPI colour-transfer allocation failures, without a panic. Waveshare BSP 1.1.3
+registers its QSPI panel using the RGB display path, which releases an LVGL draw
+buffer before the asynchronous SPI transfer completes. Its default draw buffers
+also require temporary internal DMA copies, competing with Wi-Fi for memory.
+
+The renderer now uses the SPI LVGL port and reserves a single 11,776-byte internal
+DMA buffer at boot. Transfer completion releases that buffer. This setup lives
+in our renderer, without modifying managed dependencies. Touch, brightness and
+the shared I2C bus still use the BSP. Host partial-render tests use the actual
+16-row strip height. The correction is committed separately from game changes.
+
+The randomized Peg Bounce board is generated entirely from the round seed, so
+both updated devices receive the same positions and gold pegs in multiplayer.
+Update both devices together when testing the revised Peg Bounce rules.
