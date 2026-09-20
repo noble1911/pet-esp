@@ -58,7 +58,7 @@ static void event(void *arg,esp_event_base_t base,int32_t id,void *data)
 {
     (void)arg;(void)base;
     if(id==WEBSOCKET_EVENT_CONNECTED) {s_rxlen=0;s_rxvalid=false;atomic_store(&s_hello,true);}
-    else if(id==WEBSOCKET_EVENT_DISCONNECTED || id==WEBSOCKET_EVENT_ERROR) {
+    else if(id==WEBSOCKET_EVENT_DISCONNECTED || id==WEBSOCKET_EVENT_ERROR || id==WEBSOCKET_EVENT_CLOSED) {
         atomic_store(&s_connected,false);
         portENTER_CRITICAL(&s_lock);s_state.connected=false;s_state.phase=MP_OFFLINE;portEXIT_CRITICAL(&s_lock);
     } else if(id==WEBSOCKET_EVENT_DATA) {
@@ -126,7 +126,7 @@ void multiplayer_init(void)
 {
     s_pet=*pet_state_get();s_commands=xQueueCreate(12,sizeof(Command));if(!s_commands)return;
     char uri[128];strlcpy(uri,voice_gateway(),sizeof uri);char *path=strrchr(uri,'/');if(path)strlcpy(path,"/play",sizeof uri-(size_t)(path-uri));
-    esp_websocket_client_config_t cfg={.uri=uri,.buffer_size=2048,.task_stack=6144,.reconnect_timeout_ms=5000,.network_timeout_ms=5000,.ping_interval_sec=15};
+    esp_websocket_client_config_t cfg={.uri=uri,.buffer_size=2048,.task_stack=6144,.enable_close_reconnect=true,.reconnect_timeout_ms=5000,.network_timeout_ms=5000,.ping_interval_sec=15};
     s_ws=esp_websocket_client_init(&cfg);if(!s_ws)return;
     esp_websocket_register_events(s_ws,WEBSOCKET_EVENT_ANY,event,NULL);
     xTaskCreate(worker,"playdates",6144,NULL,3,NULL);
