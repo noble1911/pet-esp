@@ -84,8 +84,24 @@ all succeeded. Hands-on acceptance of the new levels remains for the user.
 
 The Sprout image is 2,758,128 bytes, leaving 387,600 bytes (378.5 KiB) in the app
 partition. Static DIRAM use is 241,099 bytes, leaving 100,661. All eight characters
-remain. Olive's separate identity-specific build is ready but has not been flashed.
+remain. Olive has now received its separate identity-specific build; see below.
 
 Gateway `f61417a` is deployed and healthy; all 113 tests pass in the deployed
 container as well as locally. Logs: `/tmp/pet-arcade-levels-flash.log`,
 `/tmp/pet-arcade-levels-boot.log`, `/tmp/pet-arcade-levels-deployed-tests.log`.
+
+## Installed on Olive — 2026-09-20
+
+The same `pet-arcade-levels-v1` release was flashed to the verified first board,
+MAC `3c:dc:75:6e:31:04`, using its own identity header. A timestamped private
+24 KiB NVS backup was taken first. Every written section passed hash verification;
+NVS was not erased. Olive loaded at stage 3 with its existing care values.
+
+The 40-second reboot capture shows one normal boot, no display-transfer errors,
+no panic and no backtrace. Display, motion sensor, UI and voice gateway startup
+succeeded, and the backend confirmed Olive's distinct multiplayer connection.
+Both devices now run the same arcade rules and are ready for hands-on play.
+
+Image: 2,758,160 bytes; 387,568 bytes free in the app partition. Logs:
+`/tmp/pet-arcade-levels-flash-first.log`, `/tmp/pet-arcade-levels-boot-first.log`
+and `/tmp/pet-arcade-levels-first-backup.log`.
