@@ -244,6 +244,28 @@ bool pet_state_reset(void)
     return true;
 }
 
+// Stable preset order is shared with esp_gateway/pet_voices.py. Keep old IDs.
+static const pet_voice_t s_voices[PET_VOICE_COUNT]={
+    {"tiny_sprout","Tiny Sprout","Our familiar bright little squeak"},
+    {"sunny","Sunny","Bouncy, bright and playful"},
+    {"soft","Soft cloud","Gentle and softly squeaky"},
+    {"warm","Warm story","Warm and friendly, lovely for Osono"},
+    {"low","Calm & low","Low and calm, lovely for Larry"},
+};
+const pet_voice_t *pet_voice(unsigned index) { return index<PET_VOICE_COUNT?&s_voices[index]:NULL; }
+unsigned pet_voice_id(const Pet *pet)
+{
+    unsigned v=pet?pet->inventory[9]:0;
+    return v>=160 && v<160+PET_VOICE_COUNT?v-160:0;
+}
+bool pet_state_set_voice(unsigned index)
+{
+    if(!s_have_pet || index>=PET_VOICE_COUNT)return false;
+    Pet next=s_pet;next.inventory[9]=(uint8_t)(160+index);
+    if(!pet_state_save(&next))return false;
+    s_pet=next;return true;
+}
+
 bool pet_state_set_character(unsigned index)
 {
     if(!s_have_pet || index>=PET_CHARACTER_COUNT)return false;

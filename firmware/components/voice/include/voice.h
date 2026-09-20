@@ -9,6 +9,8 @@ void voice_start_talk(const Pet *pet, const char *activity);
 void voice_end_talk(const Pet *pet, const char *activity);
 void voice_cancel(void);
 void voice_check(void);
+// Audition only: does not save or send a prompt to the brain.
+bool voice_preview(unsigned preset);
 voice_state_t voice_get_state(void);
 void voice_status(char *out, size_t n);
 void voice_caption(char *out, size_t n);

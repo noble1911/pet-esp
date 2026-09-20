@@ -124,6 +124,7 @@ static void add_pet(cJSON *o)
     cJSON_AddNumberToObject(profile,"stage",p.stage);
     cJSON_AddNumberToObject(profile,"fullness",p.hunger);cJSON_AddNumberToObject(profile,"happiness",p.happiness);
     cJSON_AddNumberToObject(profile,"energy",p.energy);cJSON_AddNumberToObject(profile,"cleanliness",p.hygiene);
+    cJSON_AddStringToObject(profile,"voice_preset",pet_voice(pet_voice_id(&p))->id);
     cJSON_AddNumberToObject(profile,"stars",p.evolution_progress);cJSON_AddNumberToObject(profile,"personality",p.genes[7]%8);
 }
 static void worker(void *arg)

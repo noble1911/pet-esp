@@ -42,11 +42,14 @@ bool voice_wifi_connected(void);
 #define PET_GATEWAY "ws://192.168.1.117:8770/ws"
 const char *voice_gateway(void) {return PET_GATEWAY;}
 
-typedef struct { int kind; Pet pet; char activity[32]; pet_event_t event; unsigned event_age; size_t len; uint8_t pcm[640]; } Command;
-enum { START=1, END, CANCEL, PCM, CHECK, HELLO, REMARK, REACT, MUSIC };
+typedef struct { int kind; unsigned preview_id, preset; Pet pet; char activity[32]; pet_event_t event; unsigned event_age; size_t len; uint8_t pcm[640]; } Command;
+enum { START=1, END, CANCEL, PCM, CHECK, HELLO, REMARK, REACT, MUSIC, PREVIEW };
 static QueueHandle_t s_commands;
 static esp_websocket_client_handle_t s_ws;
 static atomic_bool s_auto=true;
+static atomic_uint s_preview_id;
+static unsigned s_preview_serial; // UI owner only
+static atomic_bool s_accept_audio;
 static atomic_int s_recent_event=PET_EVENT_NONE;
 static atomic_uint s_event_at;
 static const char *event_names[]={"", "cuddle", "ate_apple", "ate_toast", "ate_cookie",
@@ -80,6 +83,7 @@ static bool send_json(cJSON *obj)
 static cJSON *message(const char *type) { cJSON *o=cJSON_CreateObject();cJSON_AddStringToObject(o,"type",type);return o; }
 static void add_pet(cJSON *o,const Command *c)
 {
+    cJSON_AddStringToObject(o,"voice_preset",pet_voice(pet_voice_id(&c->pet))->id);
     const Pet *p=&c->pet;cJSON *j=cJSON_AddObjectToObject(o,"pet");char id[17];
     snprintf(id,sizeof(id),"%016llx",(unsigned long long)p->pet_id);
     cJSON_AddStringToObject(j,"pet_id",id);cJSON_AddStringToObject(j,"name",p->name);
@@ -110,6 +114,7 @@ void voice_start_talk(const Pet *pet,const char *activity)
     if(!atomic_load(&s_ready)) { caption_set("Voice is offline. Check Wi-Fi in Options.");return; }
     if(!audio_is_ready()) { caption_set("My microphone needs a restart.");atomic_store(&s_state,VOICE_ERROR);return; }
     if(atomic_exchange(&s_requested,true)) return;
+    atomic_store(&s_preview_id,0);atomic_store(&s_accept_audio,false);
     audio_voice_stop();caption_set("");atomic_store(&s_state,VOICE_LISTENING);enqueue(START,pet,activity);
 }
 void voice_end_talk(const Pet *pet,const char *activity)
@@ -117,8 +122,21 @@ void voice_end_talk(const Pet *pet,const char *activity)
     audio_set_capture(false);atomic_store(&s_capturing,false);
     if(atomic_exchange(&s_requested,false)) { atomic_store(&s_state,VOICE_THINKING);enqueue(END,pet,activity); }
 }
-void voice_cancel(void) { atomic_store(&s_requested,false);audio_set_capture(false);atomic_store(&s_capturing,false);audio_voice_stop();enqueue(CANCEL,NULL,NULL); }
+void voice_cancel(void) { atomic_store(&s_preview_id,0);atomic_store(&s_accept_audio,false);atomic_store(&s_requested,false);audio_set_capture(false);atomic_store(&s_capturing,false);audio_voice_stop();enqueue(CANCEL,NULL,NULL); }
 void voice_check(void) { enqueue(CHECK,NULL,NULL); }
+bool voice_preview(unsigned preset)
+{
+    if(!s_commands || !pet_voice(preset) || !audio_is_ready() || !atomic_load(&s_ready))return false;
+    voice_cancel();audio_stop_tune();caption_set("");
+    if(++s_preview_serial>2147483647u)s_preview_serial=1;
+    atomic_store(&s_preview_id,s_preview_serial);
+    Command c={.kind=PREVIEW,.preview_id=s_preview_serial,.preset=preset};
+    atomic_store(&s_state,VOICE_THINKING);
+    if(xQueueSend(s_commands,&c,0)!=pdTRUE) {
+        atomic_store(&s_preview_id,0);atomic_store(&s_state,VOICE_READY);return false;
+    }
+    return true;
+}
 bool voice_auto_enabled(void) { return atomic_load(&s_auto); }
 void voice_set_auto_enabled(bool enabled)
 {
@@ -163,9 +181,17 @@ void voice_status(char *out,size_t n)
 static void handle_json(void)
 {
     cJSON *o=cJSON_Parse(s_rx);if(!o)return;
+    const cJSON *preview=cJSON_GetObjectItem(o,"preview_id");
+    if(cJSON_IsNumber(preview) && (preview->valueint<=0 || (unsigned)preview->valueint!=atomic_load(&s_preview_id))) {
+        cJSON_Delete(o);return; // A cancelled preview must not restart audio or change the UI.
+    }
     const cJSON *t=cJSON_GetObjectItem(o,"type"),*v=cJSON_GetObjectItem(o,"value");
     if(cJSON_IsString(t)) {
         const char *type=t->valuestring;
+        if(atomic_load(&s_preview_id) && !cJSON_IsNumber(preview) &&
+           (!strcmp(type,"state") || !strcmp(type,"say") || !strcmp(type,"tts_start") || !strcmp(type,"tts_end"))) {
+            cJSON_Delete(o);return; // Drain the cancelled normal turn before preview starts.
+        }
         if(!strcmp(type,"ready")) { atomic_store(&s_ready,true);atomic_store(&s_state,VOICE_READY);ESP_LOGI("voice","pet gateway ready"); }
         else if(!strcmp(type,"state") && cJSON_IsString(v)) {
             // Never let a delayed idle/listening event overwrite a new local capture.
@@ -173,9 +199,11 @@ static void handle_json(void)
         } else if(!strcmp(type,"say")) {
             const cJSON *text=cJSON_GetObjectItem(o,"text");
             if(cJSON_IsString(text) && voice_get_state()!=VOICE_LISTENING) { portENTER_CRITICAL(&s_lock);strlcat(s_caption,text->valuestring,sizeof(s_caption));portEXIT_CRITICAL(&s_lock); }
-        } else if(!strcmp(type,"tts_start") && voice_get_state()!=VOICE_LISTENING) audio_voice_begin();
-        else if(!strcmp(type,"tts_end")) audio_voice_end();
-        else if(!strcmp(type,"error")) { atomic_store(&s_state,VOICE_ERROR);audio_set_capture(false);atomic_store(&s_capturing,false);audio_voice_stop();const cJSON *code=cJSON_GetObjectItem(o,"code");
+        } else if(!strcmp(type,"tts_start") && voice_get_state()!=VOICE_LISTENING) {
+            atomic_store(&s_accept_audio,true);audio_voice_begin();
+        }
+        else if(!strcmp(type,"tts_end")) {atomic_store(&s_accept_audio,false);audio_voice_end();}
+        else if(!strcmp(type,"error")) { atomic_store(&s_accept_audio,false);atomic_store(&s_state,VOICE_ERROR);audio_set_capture(false);atomic_store(&s_capturing,false);audio_voice_stop();const cJSON *code=cJSON_GetObjectItem(o,"code");
             const char *reason=cJSON_IsString(code)?code->valuestring:"unknown";
             caption_set(!strcmp(reason,"no_speech")?"I didn't catch that. Hold and speak close to me.":!strcmp(reason,"no_audio")?"My microphone didn't send sound. Please restart me.":"I couldn't hear back. Please try again.");
             ESP_LOGW("voice","gateway error: %s",reason); }
@@ -192,7 +220,7 @@ static void ws_event(void *arg,esp_event_base_t base,int32_t id,void *event)
         audio_set_capture(false);audio_voice_stop();s_rxlen=0;s_rxop=0;
     } else if(id==WEBSOCKET_EVENT_DATA) {
         int op=d->op_code;if(op==1 || op==2)s_rxop=op;
-        if(s_rxop==2) { if(d->data_len>0)audio_play_pcm((const uint8_t*)d->data_ptr,d->data_len); }
+        if(s_rxop==2) { if(d->data_len>0 && atomic_load(&s_accept_audio))audio_play_pcm((const uint8_t*)d->data_ptr,d->data_len); }
         else if(s_rxop==1) {
             if(s_rxlen+d->data_len>=sizeof(s_rx)) { s_rxlen=0;s_rxop=0;return; }
             memcpy(s_rx+s_rxlen,d->data_ptr,d->data_len);s_rxlen+=d->data_len;
@@ -257,9 +285,15 @@ static void worker(void *arg)
             cJSON_AddStringToObject(o,"text",c.kind==MUSIC?"I tapped Make me a tune on the toy. Please use compose_tune to create and play an original little melody for me, with just a short introduction.":c.kind==REACT?"A device care event just happened. React briefly to the recent_event in the snapshot; nobody has spoken.":"A quiet moment in the pet's room.");
             if(!send_json(o)) {atomic_store(&s_state,VOICE_READY);continue;}
             turn_started=now;ESP_LOGI("voice","automatic pet %s requested",c.kind==REACT?"reaction":"remark");
+        } else if(c.kind==PREVIEW) {
+            if(c.preview_id!=atomic_load(&s_preview_id) || !atomic_load(&s_ready))continue;
+            o=message("voice_preview");cJSON_AddStringToObject(o,"voice_preset",pet_voice(c.preset)->id);
+            cJSON_AddNumberToObject(o,"preview_id",c.preview_id);
+            if(!send_json(o))atomic_store(&s_state,VOICE_ERROR);
+            turn_started=now;
         } else if(c.kind==PCM && atomic_load(&s_ready)) {
             if(esp_websocket_client_send_bin(s_ws,(char*)c.pcm,c.len,pdMS_TO_TICKS(300))!=(int)c.len) atomic_store(&s_overflow,true);
-        } else if(c.kind==CANCEL) { send_json(message("cancel"));atomic_store(&s_state,atomic_load(&s_ready)?VOICE_READY:VOICE_OFFLINE); }
+        } else if(c.kind==CANCEL) { send_json(message("cancel"));if(!atomic_load(&s_preview_id) && !atomic_load(&s_requested))atomic_store(&s_state,atomic_load(&s_ready)?VOICE_READY:VOICE_OFFLINE); }
         else if(c.kind==CHECK) {
             portENTER_CRITICAL(&s_lock);s_check_started=now;strlcpy(s_check,"Checking server...",sizeof(s_check));portEXIT_CRITICAL(&s_lock);
             if(!atomic_load(&s_wifi))esp_wifi_connect();else send_json(message("ping"));

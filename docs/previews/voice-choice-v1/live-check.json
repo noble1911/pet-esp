@@ -1,0 +1,31 @@
+{
+  "previews": [
+    {
+      "preset": "tiny_sprout",
+      "seconds": 3.47,
+      "pcm_bytes": 110994
+    },
+    {
+      "preset": "sunny",
+      "seconds": 3.71,
+      "pcm_bytes": 118782
+    },
+    {
+      "preset": "soft",
+      "seconds": 3.67,
+      "pcm_bytes": 117308
+    },
+    {
+      "preset": "warm",
+      "seconds": 3.61,
+      "pcm_bytes": 115532
+    },
+    {
+      "preset": "low",
+      "seconds": 4.22,
+      "pcm_bytes": 134992
+    }
+  ],
+  "cancellation": "passed",
+  "brain_calls": 0
+}

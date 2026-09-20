@@ -61,7 +61,9 @@ static voice_state_t test_voice=VOICE_READY;
 void voice_init(void) {}
 void voice_start_talk(const Pet *p,const char *a) {assert(p && a);test_starts++;test_voice=VOICE_LISTENING;}
 void voice_end_talk(const Pet *p,const char *a) {assert(p && a);test_ends++;test_voice=VOICE_THINKING;}
-void voice_cancel(void) {}
+static unsigned test_previews,test_cancels,test_preview_choice;
+void voice_cancel(void) {test_cancels++;}
+bool voice_preview(unsigned choice) {test_previews++;test_preview_choice=choice;return test_voice!=VOICE_OFFLINE;}
 void voice_check(void) {}
 voice_state_t voice_get_state(void) {return test_voice;}
 void voice_status(char *s,size_t n) {snprintf(s,n,"Wi-Fi: Connected\nHome network\nIP: 192.168.1.42\nSignal: -52 dBm\nVoice server: Ready\nCheck passed: server replied");}
@@ -208,6 +210,33 @@ int main(void)
     tap(310,250);assert(audio_get_volume()==100);
     show(HOME);show(SETTINGS);assert(lv_slider_get_value(s_volume_slider)==100);
     audio_set_volume(35);show(SETTINGS);
+    // Voice audition is independent of saving, and old saves retain the familiar voice.
+    s_muted=false;test_voice=VOICE_READY;
+    assert(pet_voice_id(pet_state_get())==0);
+    assert(!pet_state_set_voice(PET_VOICE_COUNT));
+    Pet voice_before=*pet_state_get();
+    tap(262,318);assert(s_view==VOICES && s_voice_choice==0);shot("voice-tiny-sprout");
+    tap(315,155);assert(s_voice_choice==1 && pet_voice_id(pet_state_get())==0);
+    tap(104,307);assert(test_previews==1 && test_preview_choice==1);assert(!memcmp(&voice_before,pet_state_get(),sizeof(Pet)));
+    tap(262,307);assert(!s_preview_playing);
+    s_muted=true;tap(104,307);assert(test_previews==1);s_muted=false;
+    audio_set_volume(0);tap(104,307);assert(test_previews==1);audio_set_volume(35);
+    test_voice=VOICE_OFFLINE;tap(104,307);assert(!s_preview_playing && strstr(lv_label_get_text(s_hint),"offline"));test_voice=VOICE_READY;
+    fail_save=true;tap(180,413);assert(s_view==VOICES && pet_voice_id(pet_state_get())==0);
+    assert(strstr(lv_label_get_text(s_hint),"Could not save"));fail_save=false;
+    tap(180,413);assert(s_view==SETTINGS && pet_voice_id(pet_state_get())==1);
+    pet_state_init();assert(pet_voice_id(pet_state_get())==1);
+    show(VOICES);tap(315,155);tap(315,155);assert(s_voice_choice==3);shot("voice-warm-story");
+    unsigned cancels=test_cancels;tap(104,307);tap(48,46);
+    assert(s_view==SETTINGS && test_cancels>cancels && pet_voice_id(pet_state_get())==1);
+    show(VOICES);tap(315,155);tap(315,155);tap(315,155);assert(s_voice_choice==4);shot("voice-quiet-grown-up");
+    tap(180,413);assert(pet_voice_id(pet_state_get())==4);
+    Pet voice_after=*pet_state_get();voice_after.inventory[9]=voice_before.inventory[9];
+    assert(!memcmp(&voice_before,&voice_after,sizeof(Pet)));
+    // Corrupt/unmarked values default safely, and all presets persist without touching progress.
+    for(unsigned i=0;i<PET_VOICE_COUNT;i++) {assert(pet_state_set_voice(i));pet_state_init();assert(pet_voice_id(pet_state_get())==i);}
+    Pet voice_legacy=*pet_state_get();voice_legacy.inventory[9]=255;assert(pet_voice_id(&voice_legacy)==0);
+    assert(pet_state_set_voice(0));show(SETTINGS);
     // Repeated navigation catches dangling object pointers/timers.
     for(int i=0;i<100;i++){show((View)(i%14));advance(80);show(HOME);advance(80);}
     // Review every whole character and all five stages with production geometry.

@@ -29,8 +29,11 @@
 #define BALL_LAND_MS 160
 #define BALL_WIN_MS 650
 
-typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT, TREATS, REWARDS, POWER_OFF, PLAY_MENU, MULTIPLAYER } View;
+typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT, TREATS, REWARDS, POWER_OFF, PLAY_MENU, MULTIPLAYER, VOICES } View;
 static View s_view;
+static unsigned s_voice_choice;
+static bool s_preview_playing;
+static uint32_t s_preview_started;
 static lv_obj_t *s_root, *s_pet, *s_bars[4], *s_target, *s_counter;
 static lv_obj_t *s_dots[5], *s_hint, *s_sleep_bar;
 static lv_obj_t *s_volume_label, *s_volume_slider;
@@ -364,11 +367,12 @@ static void volume_cb(lv_event_t *e)
 }
 static const char *activity(void)
 {
-    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits","special treats","choosing stickers or gifts","going to sleep","choosing games, music or multiplayer","playing a cooperative playdate"}[s_view];
+    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits","special treats","choosing stickers or gifts","going to sleep","choosing games, music or multiplayer","playing a cooperative playdate","choosing a voice"}[s_view];
 }
 static void talk_begin(void)
 {
     if(s_talking || s_view==MULTIPLAYER) return;
+    if(s_view==VOICES) {voice_cancel();s_preview_playing=false;}
     audio_stop_tune();
     if(s_view==MUSIC)s_music_choice=-1;
     s_reaction_until=0;s_next_reaction=lv_tick_get()+45000;
@@ -390,6 +394,33 @@ static void auto_chat_cb(lv_event_t *e)
 {
     (void)e;voice_set_auto_enabled(!voice_auto_enabled());
     s_next_remark=lv_tick_get()+90000;show(SETTINGS);
+}
+static void voice_stop_cb(lv_event_t *e)
+{
+    (void)e;voice_cancel();s_preview_playing=false;
+    lv_label_set_text(s_hint,"Preview stopped. Nothing changed.");
+}
+static void voice_step_cb(lv_event_t *e)
+{
+    voice_cancel();s_preview_playing=false;
+    int direction=(int)(intptr_t)lv_event_get_user_data(e);
+    s_voice_choice=(s_voice_choice+PET_VOICE_COUNT+direction)%PET_VOICE_COUNT;
+    show(VOICES);
+}
+static void voice_preview_cb(lv_event_t *e)
+{
+    (void)e;
+    if(s_muted || audio_get_volume()==0) {lv_label_set_text(s_hint,"Turn sound on in Options first.");return;}
+    s_talking=false;
+    s_preview_playing=voice_preview(s_voice_choice);
+    s_preview_started=lv_tick_get();
+    lv_label_set_text(s_hint,s_preview_playing?"Getting the voice ready...":"Voice offline. Check Wi-Fi in Options.");
+}
+static void voice_save_cb(lv_event_t *e)
+{
+    (void)e;voice_cancel();s_preview_playing=false;
+    if(pet_state_set_voice(s_voice_choice))show(SETTINGS);
+    else lv_label_set_text(s_hint,"Could not save. Please try again.");
 }
 static void check_cb(lv_event_t *e) { (void)e;voice_check(); }
 static void name_save(lv_event_t *e)
@@ -976,6 +1007,11 @@ static void make_home(void)
 }
 static void show(View view)
 {
+    if(s_view==VOICES && view!=VOICES) {voice_cancel();s_preview_playing=false;}
+    if(view==VOICES && s_view!=VOICES) {
+        voice_cancel();audio_stop_tune();s_talking=false;s_preview_playing=false;
+        s_voice_choice=pet_voice_id(pet_state_get());
+    }
     if(s_view==MULTIPLAYER && view!=MULTIPLAYER)multiplayer_close();
     if(view==MULTIPLAYER && s_view!=MULTIPLAYER) {
         voice_cancel();audio_stop_tune();s_talking=false;multiplayer_open(pet_state_get());
@@ -1111,14 +1147,36 @@ static void show(View view)
         lv_obj_add_event_cb(s_volume_slider,volume_cb,LV_EVENT_RELEASED,NULL);
         label(s_root,"Quiet",38,270,72,false);
         label(s_root,"Loud",258,270,72,false);
-        lv_obj_t *wifi=button(s_root,34,297,300,44,BLUE,nav_cb,CONNECTION);
-        label(wifi,"Wi-Fi & voice connection",0,9,300,false);
+        lv_obj_t *wifi=button(s_root,34,297,144,44,BLUE,nav_cb,CONNECTION);
+        label(wifi,LV_SYMBOL_WIFI " Wi-Fi",0,13,144,false);
+        lv_obj_t *voices=button(s_root,190,297,144,44,PINK,nav_cb,VOICES);
+        label(voices,LV_SYMBOL_AUDIO " Voice",0,13,144,false);
         lv_obj_t *name=button(s_root,34,347,144,44,0xffe9d3,nav_cb,NAME);
         label(name,"Pet name",0,13,144,false);
         lv_obj_t *profile=button(s_root,190,347,144,44,MINT,nav_cb,PROFILE);
         label(profile,"My pet",0,13,144,false);
         lv_obj_t *reset=button(s_root,34,397,300,44,PINK,nav_cb,RESET);
         label(reset,"Start fresh...",0,13,300,false);
+    } else if(view==VOICES) {
+        header_to("Pet voice",SETTINGS);
+        char count[32];snprintf(count,sizeof count,"Voice %u of %u",s_voice_choice+1,PET_VOICE_COUNT);
+        label(s_root,count,24,83,320,false);
+        lv_obj_t *card=shape(s_root,24,115,320,123,BLUE,12);
+        label(card,pet_voice(s_voice_choice)->name,50,19,220,true);
+        label(card,pet_voice(s_voice_choice)->description,48,62,224,false);
+        lv_obj_t *prev=button(s_root,28,127,48,56,CREAM,voice_step_cb,-1);
+        label(prev,LV_SYMBOL_LEFT,0,18,48,true);
+        lv_obj_t *next=button(s_root,292,127,48,56,CREAM,voice_step_cb,1);
+        label(next,LV_SYMBOL_RIGHT,0,18,48,true);
+        char current[64];snprintf(current,sizeof current,"Saved: %s",pet_voice(pet_voice_id(pet_state_get()))->name);
+        label(s_root,current,24,248,320,false);
+        lv_obj_t *preview=button(s_root,34,282,144,48,MINT,voice_preview_cb,0);
+        label(preview,LV_SYMBOL_PLAY " Listen",0,14,144,true);
+        lv_obj_t *stop=button(s_root,190,282,144,48,CREAM,voice_stop_cb,0);
+        label(stop,LV_SYMBOL_STOP " Stop",0,14,144,true);
+        s_hint=label(s_root,"Listen first, then choose your favourite.",24,343,320,false);
+        lv_obj_t *save=button(s_root,34,390,300,48,PINK,voice_save_cb,0);
+        label(save,"Use this voice",0,14,300,true);
     } else if(view==RESET) {
         header_to("Start fresh?",SETTINGS);
         label(s_root,"A new little beginning",24,96,320,true);
@@ -1202,6 +1260,14 @@ static void frame(lv_timer_t *t)
     }
     if(s_talking && now-s_talk_started>=20000)talk_end();
     voice_state_t vs=voice_get_state();
+    if(s_view==VOICES && s_preview_playing) {
+        if(vs==VOICE_ERROR || vs==VOICE_OFFLINE) {
+            s_preview_playing=false;lv_label_set_text(s_hint,"Voice unavailable. Check Wi-Fi or retry.");
+        } else if(vs==VOICE_SPEAKING || audio_voice_playing())lv_label_set_text(s_hint,"How does this one sound?");
+        else if(vs==VOICE_READY && now-s_preview_started>500) {
+            s_preview_playing=false;lv_label_set_text(s_hint,"Like it? Tap Use this voice to save.");
+        }
+    }
     if(!s_next_remark)s_next_remark=now+90000;
     uint32_t inactivity=lv_display_get_inactive_time(NULL);
     if((int32_t)(now-s_next_remark)>=0 && s_view==HOME && !s_talking &&

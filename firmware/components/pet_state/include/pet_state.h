@@ -64,6 +64,7 @@ typedef struct {
     uint8_t  hygiene;
 
     // Inventory: slots 0..7 = little-endian playdate receipt, slot 8 = marker 215.
+    // Slot 9 = voice preset marker (160..164); unmarked saves use Tiny Sprout.
     // Slot 13 = wall sticker (200..217), slot 14 = room mask (128..191),
     // slot 15 = legacy room gift (100..105), retained for rollback. Zero = empty.
     uint8_t  inventory[16];
@@ -87,6 +88,12 @@ typedef struct { const char *name, *description; } pet_character_t;
 const pet_character_t *pet_character(unsigned index);
 unsigned pet_character_id(const Pet *pet); // unmarked legacy saves use original Sprout
 bool pet_state_set_character(unsigned index); // save first; preserves all progress
+
+#define PET_VOICE_COUNT 5
+typedef struct { const char *id, *name, *description; } pet_voice_t;
+const pet_voice_t *pet_voice(unsigned index);
+unsigned pet_voice_id(const Pet *pet);
+bool pet_state_set_voice(unsigned index);
 
 // Legacy appearance catalogue; personality is the only active trait card.
 typedef struct {
