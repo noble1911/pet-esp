@@ -52,7 +52,7 @@ Keep the order and IDs in pet_state.c and esp_gateway/pet_voices.py stable.
 - All five installed Kokoro voices produced valid 16 kHz mono audio. Local audio
   examples and measured durations are in `previews/voice-choice-v1/`.
 - Firmware builds successfully: `0x29d0a0` bytes, with `0x62f60` bytes (about
-  396 KiB, 13%) free in the app partition. **Not flashed in this change.**
+  396 KiB, 13%) free in the app partition. Flashed on the first board; see below.
 
 Gateway commit `ac0a195` is deployed on Ron's Mac mini. No Butler backend or model
 configuration changes were needed. The authenticated live preview check uses an
@@ -67,3 +67,22 @@ The previous gateway is `a57cad4`; its image is backed up as
 playdate database when rolling back. Deploy the gateway before the new firmware.
 
 ![Voice picker](previews/voice-choice-v1/voice-tiny-sprout.png)
+
+## First-device flash — 2026-09-20
+
+Installed `pet-voice-choice-v1` on MAC `3c:dc:75:6e:31:04` through
+`/dev/cu.usbmodem101`, after verifying the hardware identity. All written flash
+sections passed esptool hash verification. NVS was not erased. A private 24 KiB
+NVS backup is saved under ignored `firmware/private/backups/`.
+
+A captured reboot confirms firmware version `pet-voice-choice-v1`, restored pet
+Olive (`6266ea62beb19b67`, stage 3), speaker/microphone readiness, the normal
+Little Meadow ready message and successful voice authentication. The gateway also
+confirms the multiplayer connection recovered after the brief stale-socket retry.
+Five display SPI queue errors occurred during the initial network startup burst;
+none recurred during the remainder of the 25-second capture. No panic or reset
+loop was observed. Visual/audio acceptance still requires testing on the toy.
+
+Logs: `/tmp/pet-voice-choice-flash.log` and `/tmp/pet-voice-choice-boot.log`.
+The second board must be identified and provisioned with its own credentials
+before flashing; do not reuse this board's build on it.
