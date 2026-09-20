@@ -102,3 +102,27 @@ the shared I2C bus still use the BSP. Host partial-render tests use the actual
 The randomized Peg Bounce board is generated entirely from the round seed, so
 both updated devices receive the same positions and gold pegs in multiplayer.
 Update both devices together when testing the revised Peg Bounce rules.
+
+## Installed release — 2026-09-20
+
+`pet-arcade-v1.1` (`5c57ba9`) is installed on Sprout's board,
+MAC `3c:dc:75:6e:b5:20`. Esptool verified every written section. NVS was not
+erased; the pet loaded with its existing care and progress. An ignored private
+NVS backup is under `firmware/private/backups/`.
+
+The 55-second reboot capture confirms release v1.1, the reserved DMA display
+buffer, QMI8658 readings, normal UI startup and voice gateway authentication.
+It contains zero SPI display-transfer errors and no panic/backtrace, compared
+with hundreds of display errors in the earlier capture. Longer hands-on play
+is still needed to confirm the intermittent freeze is resolved.
+
+Second-board image: 2,756,960 bytes; 388,768 bytes (379.7 KiB) free in the app
+partition. First-board image: 2,756,992 bytes; 388,736 bytes free. Both retain all
+eight characters. The first board's identity-specific build is ready; that board
+has not yet been flashed with the games update.
+
+Local logs: `/tmp/pet-arcade-v1.1-flash.log`, `/tmp/pet-arcade-v1.1-boot.log`,
+`/tmp/pet-arcade-deployed-tests.log`, `/tmp/pet-arcade-host.log` and
+`/tmp/pet-arcade-partial16.log`. The gateway remains `f2c54ed` and its deployed
+container passes all 112 tests. No additional backend changes are needed for
+the wider aiming range or seeded layouts.
