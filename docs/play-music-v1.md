@@ -31,3 +31,18 @@ Seventeen backend tests pass with the updated pet-only menu description.
 Rollback firmware: `larry-v1`. This change does not alter the saved pet schema
 or require erasing NVS. Source MIDI files and the importer make the library
 reproducible. The existing Haiku model and pet voice are unchanged.
+
+## Deployment — 2026-09-20
+
+Firmware `play-music-v1` (`7d52424`) built successfully with ESP-IDF 5.3.5.
+Application size is `0x27ddf0`, leaving 17% of the 3 MiB app partition free.
+USB flash on `/dev/cu.usbmodem101` completed with all hashes verified, without
+erasing NVS. The device reconnected to the gateway at 13:48:13 UTC. Physical
+speaker sound and touch feel still need the user's listening/play test.
+
+Backend `d123f10` is deployed on Ron's Mac mini; Butler is healthy and all
+17 tests pass against the deployed code. Logs are in `/tmp/pet-midi-build.log`,
+`/tmp/pet-midi-flash.log`, `/tmp/pet-midi-gateway.log`,
+`/tmp/pet-midi-backend-live-test.log`, `/tmp/pet-play-menu-test.log` and
+`/tmp/pet-midi-audio-test.log`. Full host-rendered audio auditions are in
+`/tmp/pet-midi-auditions/`.
