@@ -361,6 +361,16 @@ bool pet_state_eat(unsigned food)
     return true;
 }
 
+bool pet_state_game_reward(void)
+{
+    if(!s_have_pet)return false;
+    Pet next=s_pet;unsigned joy=next.happiness+CARE_RESTORE_AMOUNT;next.happiness=joy>100?100:joy;
+    if(next.evolution_progress<UINT32_MAX)next.evolution_progress++;
+    next.stage=stage_for_stars(next.evolution_progress);
+    if(!pet_state_save(&next))return false;
+    s_pet=next;return true;
+}
+
 void pet_state_feed(void)  { care_restore(&s_pet.hunger,    CARE_RESTORE_AMOUNT); }
 void pet_state_play(void)  { care_restore(&s_pet.happiness, CARE_RESTORE_AMOUNT); }
 void pet_state_rest(void)  { care_restore(&s_pet.energy,    CARE_RESTORE_AMOUNT); }

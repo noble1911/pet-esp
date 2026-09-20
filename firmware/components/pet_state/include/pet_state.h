@@ -140,6 +140,7 @@ int pet_food_milestone(uint32_t stars); // special index, or -1
 bool pet_state_eat(unsigned food); // transactional save; false for locked/invalid
 
 void pet_state_feed(void);    // hunger
+bool pet_state_game_reward(void); // transactional care reward for a completed arcade round
 void pet_state_play(void);    // happiness
 void pet_state_rest(void);    // energy
 void pet_state_clean(void);   // hygiene

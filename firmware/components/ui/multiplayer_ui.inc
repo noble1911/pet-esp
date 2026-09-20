@@ -9,6 +9,7 @@ static lv_obj_t *s_mp_images[2],*s_mp_ball,*s_mp_progress[10],*s_mp_again,*s_mp_
 static uint32_t s_mp_poll,s_mp_motion,s_mp_request,s_mp_reward_retry;
 static bool s_mp_pending,s_mp_from_self,s_mp_reward_ok;
 static bool s_mp_chat_mode;
+static mp_mode_t s_mp_mode=MP_PEGS;
 static lv_obj_t *s_mp_caption;
 static uint64_t s_mp_saved_receipt;
 static void mp_action(lv_event_t *e)
@@ -16,7 +17,8 @@ static void mp_action(lv_event_t *e)
     int action=(int)(intptr_t)lv_event_get_user_data(e);bool ok=false;
     if(action>=0 && (unsigned)action<s_mp.count) {
         if(s_mp_chat_mode && !s_mp.peers[action].chat) {lv_label_set_text(s_hint,"Update both pets for Pet chat.");return;}
-        ok=s_mp_chat_mode?multiplayer_chat_invite(s_mp.peers[action].user):multiplayer_invite(s_mp.peers[action].user);
+        if(!s_mp_chat_mode && s_mp_mode>=MP_PEGS && !s_mp.peers[action].games) {lv_label_set_text(s_hint,"Update both pets for the new games.");return;}
+        ok=s_mp_chat_mode?multiplayer_chat_invite(s_mp.peers[action].user):s_mp_mode>=MP_PEGS?multiplayer_game_invite(s_mp.peers[action].user,s_mp_mode):multiplayer_invite(s_mp.peers[action].user);
     }
     else if(action==-1)ok=multiplayer_accept(s_mp.invite);
     else if(action==-2)ok=multiplayer_decline(s_mp.invite);
@@ -24,7 +26,7 @@ static void mp_action(lv_event_t *e)
         ok=multiplayer_pass(s_mp.room,s_mp.seq);
         if(ok){s_mp_pending=true;s_mp_request=lv_tick_get();}
     } else if(action==-4)ok=multiplayer_again(s_mp.room);
-    else if(action==-5 || action==-6) {s_mp_chat_mode=action==-6;show(MULTIPLAYER);return;}
+    else if(action<=-5 && action>=-8) {s_mp_mode=(mp_mode_t[]){MP_PEGS,MP_CHAT,MP_TILT,MP_MEMORY}[-action-5];s_mp_chat_mode=s_mp_mode==MP_CHAT;show(MULTIPLAYER);return;}
     if(!ok && s_hint)lv_label_set_text(s_hint,"One little moment. Try again soon.");
 }
 static Pet mp_other(void)
@@ -53,6 +55,7 @@ static void make_multiplayer(void)
 #endif
     }
     if(!s_mp_art) {header_to("Multiplayer",PLAY_MENU);s_hint=label(s_root,"A little hiccup. Please restart and try again.",24,180,320,false);return;}
+    if(mp_game(s_mp.phase) && s_mp.mode>=MP_PEGS) {make_arcade(&s_mp);return;}
     if(mp_game(s_mp.phase)) {
         if(s_mp.chat) {
             room(false);header_to("Pet chat",PLAY_MENU);mp_pair();
@@ -78,7 +81,7 @@ static void make_multiplayer(void)
         s_mp_again=button(s_root,69,395,230,44,MINT,mp_action,-4);label(s_mp_again,"Play again",0,14,230,false);
         lv_obj_add_flag(s_mp_again,LV_OBJ_FLAG_HIDDEN);
     } else if(s_mp.phase==MP_INCOMING || s_mp.phase==MP_OUTGOING) {
-        header_to(s_mp.chat?"Chat together?":"Play together?",PLAY_MENU);mp_pair();
+        header_to(s_mp.chat?"Chat together?":s_mp.mode==MP_PEGS?"Peg Bounce?":s_mp.mode==MP_TILT?"Tilt Garden?":s_mp.mode==MP_MEMORY?"Memory Pairs?":"Play together?",PLAY_MENU);mp_pair();
         s_hint=label(s_root,s_mp.phase==MP_INCOMING?(s_mp.chat?"A little chat with your friend!":"Your friend wants to play!"):"Waiting for your friend...",20,271,328,false);
         if(s_mp.phase==MP_INCOMING) {
             lv_obj_t *yes=button(s_root,54,308,260,60,MINT,mp_action,-1);label(yes,s_mp.chat?"Let's chat!":"Play together!",0,21,260,true);
@@ -89,20 +92,22 @@ static void make_multiplayer(void)
         char title[64];snprintf(title,sizeof title,"%s's playdates",pet_state_get()->name);label(s_root,title,24,87,320,false);
         pixel_pet_render(&s_mp_art[0],pet_state_get(),PIXEL_IDLE,0,PIXEL_APPLE);
         s_mp_images[0]=art(s_root,&s_mp_art[0].image,148,111,256);
-        lv_obj_t *ball=button(s_root,24,192,152,42,s_mp_chat_mode?CREAM:MINT,mp_action,-5);
-        label(ball,"Ball game",0,13,152,false);
-        lv_obj_t *chat=button(s_root,192,192,152,42,s_mp_chat_mode?MINT:CREAM,mp_action,-6);
-        label(chat,"Pet chat",0,13,152,false);
-        s_hint=label(s_root,s_mp.connected?(s_mp.notice[0]?s_mp.notice:s_mp.count?"Choose a friend!":"Looking for a friend..."):"Connecting to your home...",20,241,328,false);
+        const char *modes[]={"Peg Bounce","Pet chat","Tilt Garden","Memory Pairs"};
+        for(unsigned i=0;i<4;i++){
+            mp_mode_t mode=(mp_mode_t[]){MP_PEGS,MP_CHAT,MP_TILT,MP_MEMORY}[i];
+            lv_obj_t *tab=button(s_root,24+(i%2)*168,173+(i/2)*44,152,38,mode==s_mp_mode?MINT:CREAM,mp_action,-5-(int)i);
+            label(tab,modes[i],0,11,152,false);
+        }
+        s_hint=label(s_root,s_mp.connected?(s_mp.notice[0]?s_mp.notice:s_mp.count?"Choose a friend!":"Looking for a friend..."):"Connecting to your home...",20,267,328,false);
         if(s_mp.connected && s_mp.count) {
-            lv_obj_t *list=shape(s_root,24,274,320,164,CREAM,0);lv_obj_add_flag(list,LV_OBJ_FLAG_SCROLLABLE);lv_obj_set_scroll_dir(list,LV_DIR_VER);
+            lv_obj_t *list=shape(s_root,24,294,320,144,CREAM,0);lv_obj_add_flag(list,LV_OBJ_FLAG_SCROLLABLE);lv_obj_set_scroll_dir(list,LV_DIR_VER);
             for(unsigned i=0;i<s_mp.count;i++) {
                 lv_obj_t *b=button(list,0,(int)i*70,316,62,(i%2)?PINK:MINT,mp_action,(int)i);
                 friends_icon(b,10,8);label(b,s_mp.peers[i].name,69,12,237,true);label(b,"Tap to invite",69,37,237,false);
             }
         } else {
-            label(s_root,s_mp.connected?"Open Multiplayer on your other pet.":"Check Wi-Fi in Options if this takes a while.",30,290,308,false);
-            label(s_root,"Both pets need the same home Wi-Fi.",30,337,308,false);
+            label(s_root,s_mp.connected?"Open Multiplayer on your other pet.":"Check Wi-Fi in Options if this takes a while.",30,308,308,false);
+            label(s_root,"Both pets need the same home Wi-Fi.",30,363,308,false);
         }
     }
 }
@@ -119,7 +124,7 @@ static void multiplayer_frame(uint32_t now)
             }
         }
         if(s_view!=MULTIPLAYER)return;
-        bool redraw=mp_game(next.phase)!=mp_game(s_mp.phase) || next.chat!=s_mp.chat || strcmp(next.room,s_mp.room) ||
+        bool redraw=next.mode!=s_mp.mode || mp_game(next.phase)!=mp_game(s_mp.phase) || next.chat!=s_mp.chat || strcmp(next.room,s_mp.room) ||
             (!mp_game(next.phase) && (next.phase!=s_mp.phase || next.count!=s_mp.count || strcmp(next.notice,s_mp.notice) ||
              strcmp(next.invite,s_mp.invite) || memcmp(next.peers,s_mp.peers,sizeof next.peers)));
         if(redraw) {show(MULTIPLAYER);return;}
@@ -127,12 +132,13 @@ static void multiplayer_frame(uint32_t now)
             s_mp_motion=now;s_mp_from_self=!next.my_turn;
             // The last pass belongs to player 2, whose turn was set in the prior snapshot.
             if(next.seq==10)s_mp_from_self=s_mp.my_turn;
-            s_mp_pending=false;if(!next.chat)audio_play(SFX_BOUNCE);
+            s_mp_pending=false;if(!next.chat && next.mode==MP_BALL)audio_play(SFX_BOUNCE);
         }
         if(next.phase!=s_mp.phase)s_mp_pending=false;
         s_mp=next;
     }
     if(s_view!=MULTIPLAYER)return;
+    if(s_mp.mode>=MP_PEGS && mp_game(s_mp.phase)){arcade_frame(now,&s_mp);return;}
     bool flying=!s_mp.chat && s_mp.seq>0 && now-s_mp_motion<720 && s_mp.phase!=MP_WAITING;
     if(s_mp_pending && now-s_mp_request>3000)s_mp_pending=false;
     for(unsigned i=0;i<2;i++)if(s_mp_images[i]) {

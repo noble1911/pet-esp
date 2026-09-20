@@ -12,7 +12,7 @@
 #include <stdatomic.h>
 #include <inttypes.h>
 
-typedef struct {char type[12],key[40];unsigned seq,epoch;uint64_t receipt,pet;} Command;
+typedef struct {char type[12],key[40];unsigned seq,epoch,value;uint64_t receipt,pet;} Command;
 static QueueHandle_t s_commands;
 static esp_websocket_client_handle_t s_ws;
 static portMUX_TYPE s_lock=portMUX_INITIALIZER_UNLOCKED;
@@ -39,7 +39,7 @@ static void peer(cJSON *o,mp_peer_t *p)
 {
     strlcpy(p->user,string(o,"user"),sizeof p->user);strlcpy(p->id,string(o,"id"),sizeof p->id);
     strlcpy(p->name,string(o,"name"),sizeof p->name);p->character=number(o,"character",PET_CHARACTER_COUNT-1);p->stage=number(o,"stage",5);
-    p->chat=cJSON_IsTrue(cJSON_GetObjectItem(o,"chat"));
+    p->chat=cJSON_IsTrue(cJSON_GetObjectItem(o,"chat"));p->games=cJSON_IsTrue(cJSON_GetObjectItem(o,"games"));
 }
 static void receive(void)
 {
@@ -59,8 +59,17 @@ static void receive(void)
     if(!strcmp(string(o,"type"),"play_state")) {
         mp_state_t next={.connected=true};const char *phases[]={"offline","closed","lobby","outgoing","incoming","playing","waiting","finished"};
         for(unsigned i=0;i<8;i++)if(!strcmp(string(o,"phase"),phases[i]))next.phase=(mp_phase_t)i;
-        next.seq=number(o,"seq",10);next.my_turn=cJSON_IsTrue(cJSON_GetObjectItem(o,"my_turn"));
+        next.seq=number(o,"seq",100000);next.my_turn=cJSON_IsTrue(cJSON_GetObjectItem(o,"my_turn"));
         next.online=cJSON_IsTrue(cJSON_GetObjectItem(o,"online"));next.again=cJSON_IsTrue(cJSON_GetObjectItem(o,"again"));
+        const char *modes[]={"ball","chat","pegs","tilt","memory"};
+        for(unsigned i=0;i<5;i++)if(!strcmp(string(o,"mode"),modes[i]))next.mode=(mp_mode_t)i;
+        next.seed=number(o,"seed",UINT32_MAX);next.score=number(o,"score",20000);next.peer_score=number(o,"peer_score",20000);
+        next.countdown_ms=number(o,"countdown_ms",3000);next.remaining_ms=number(o,"remaining_ms",240000);
+        next.ready=cJSON_IsTrue(cJSON_GetObjectItem(o,"ready"));next.started=cJSON_IsTrue(cJSON_GetObjectItem(o,"started"));
+        next.submitted=cJSON_IsTrue(cJSON_GetObjectItem(o,"submitted"));next.peer_submitted=cJSON_IsTrue(cJSON_GetObjectItem(o,"peer_submitted"));
+        next.matched=number(o,"matched",4095);memset(next.cards,-1,sizeof next.cards);
+        cJSON *cards=cJSON_GetObjectItem(o,"cards");
+        for(unsigned i=0;i<12;i++){cJSON *v=cJSON_GetArrayItem(cards,i);if(cJSON_IsNumber(v) && v->valueint>=0 && v->valueint<6)next.cards[i]=v->valueint;}
         next.chat=!strcmp(string(o,"mode"),"chat");next.speaking=cJSON_IsTrue(cJSON_GetObjectItem(o,"speaking"));
         strlcpy(next.text,string(o,"text"),sizeof next.text);
         strlcpy(next.room,string(o,"room"),sizeof next.room);strlcpy(next.invite,string(o,"invite"),sizeof next.invite);
@@ -135,7 +144,7 @@ static void worker(void *arg)
     for(;;) {
         if(atomic_exchange(&s_hello,false)) {
             cJSON *o=message("hello");cJSON_AddNumberToObject(o,"proto",1);cJSON_AddNumberToObject(o,"artwork",3);
-            cJSON_AddNumberToObject(o,"chat",1);
+            cJSON_AddNumberToObject(o,"chat",1);cJSON_AddNumberToObject(o,"games",1);
             cJSON_AddStringToObject(o,"user_id",voice_device_id());cJSON_AddStringToObject(o,"device_token",voice_device_token());
             add_pet(o);send_json(o);sent_epoch=UINT32_MAX;ping=xTaskGetTickCount();
         }
@@ -147,9 +156,11 @@ static void worker(void *arg)
         Command c;
         if(xQueueReceive(s_commands,&c,pdMS_TO_TICKS(100))==pdTRUE && atomic_load(&s_connected) && (c.epoch==atomic_load(&s_epoch) || !strcmp(c.type,"ack"))) {
             cJSON *o=message(c.type);
-            if(!strcmp(c.type,"invite")) {cJSON_AddStringToObject(o,"user",c.key);cJSON_AddStringToObject(o,"mode",c.seq?"chat":"ball");}
+            if(!strcmp(c.type,"invite")) {cJSON_AddStringToObject(o,"user",c.key);cJSON_AddStringToObject(o,"mode",((const char*[]){"ball","chat","pegs","tilt","memory"})[c.seq<=MP_MEMORY?c.seq:0]);}
             if(!strcmp(c.type,"accept") || !strcmp(c.type,"decline"))cJSON_AddStringToObject(o,"invite",c.key);
-            if(!strcmp(c.type,"pass") || !strcmp(c.type,"again")) {cJSON_AddStringToObject(o,"room",c.key);cJSON_AddNumberToObject(o,"seq",c.seq);}
+            if(!strcmp(c.type,"pass") || !strcmp(c.type,"again") || !strcmp(c.type,"ready") || !strcmp(c.type,"score") || !strcmp(c.type,"flip")) {cJSON_AddStringToObject(o,"room",c.key);cJSON_AddNumberToObject(o,"seq",c.seq);}
+            if(!strcmp(c.type,"score"))cJSON_AddNumberToObject(o,"score",c.seq);
+            if(!strcmp(c.type,"flip"))cJSON_AddNumberToObject(o,"card",c.value);
             if(!strcmp(c.type,"ack")) {
                 char id[24],pet[17];snprintf(id,sizeof id,"%" PRIu64,c.receipt);snprintf(pet,sizeof pet,"%016" PRIx64,c.pet);
                 cJSON_AddStringToObject(o,"id",id);cJSON_AddStringToObject(o,"pet",pet);
@@ -194,4 +205,14 @@ bool multiplayer_again(const char *room) {return command("again",room,0);}
 void multiplayer_ack(uint64_t receipt,uint64_t pet)
 {
     if(s_commands) {Command c={.receipt=receipt,.pet=pet};strlcpy(c.type,"ack",sizeof c.type);xQueueSend(s_commands,&c,0);}
+}
+
+bool multiplayer_game_invite(const char *user,mp_mode_t mode) {return mode>=MP_PEGS && mode<=MP_MEMORY && command("invite",user,mode);}
+bool multiplayer_ready(const char *room) {return command("ready",room,0);}
+bool multiplayer_score(const char *room,unsigned score) {return command("score",room,score);}
+bool multiplayer_flip(const char *room,unsigned seq,unsigned card)
+{
+    if(card>=12 || !s_commands || !atomic_load(&s_connected) || !atomic_load(&s_active))return false;
+    Command c={.seq=seq,.epoch=atomic_load(&s_epoch),.value=card};strlcpy(c.type,"flip",sizeof c.type);strlcpy(c.key,room,sizeof c.key);
+    return xQueueSend(s_commands,&c,0)==pdTRUE;
 }

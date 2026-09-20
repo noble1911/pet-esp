@@ -12,6 +12,7 @@
 #include "power.h"
 #include "voice.h"
 #include "multiplayer.h"
+#include "motion.h"
 
 static const char *TAG = "pet";
 
@@ -34,6 +35,7 @@ void app_main(void)
     // shared I²C bus inside bsp_display_start() (called from renderer
     // init). Without that, bsp_i2c_get_handle() returns NULL.
     power_init();
+    motion_init();
     audio_init();
     voice_init();
     multiplayer_init();

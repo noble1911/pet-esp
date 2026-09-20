@@ -8,6 +8,8 @@
 #include "audio.h"
 #include "voice.h"
 #include "multiplayer.h"
+#include "arcade.h"
+#include "motion.h"
 #include <string.h>
 #include "esp_random.h"
 #include "esp_system.h"
@@ -29,7 +31,7 @@
 #define BALL_LAND_MS 160
 #define BALL_WIN_MS 650
 
-typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT, TREATS, REWARDS, POWER_OFF, PLAY_MENU, MULTIPLAYER, VOICES } View;
+typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT, TREATS, REWARDS, POWER_OFF, PLAY_MENU, MULTIPLAYER, VOICES, ARCADE } View;
 static View s_view;
 static unsigned s_voice_choice;
 static bool s_preview_playing;
@@ -367,11 +369,11 @@ static void volume_cb(lv_event_t *e)
 }
 static const char *activity(void)
 {
-    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits","special treats","choosing stickers or gifts","going to sleep","choosing games, music or multiplayer","playing a cooperative playdate","choosing a voice"}[s_view];
+    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits","special treats","choosing stickers or gifts","going to sleep","choosing games, music or multiplayer","playing a cooperative playdate","choosing a voice","playing an arcade game"}[s_view];
 }
 static void talk_begin(void)
 {
-    if(s_talking || s_view==MULTIPLAYER) return;
+    if(s_talking || s_view==MULTIPLAYER || s_view==ARCADE) return;
     if(s_view==VOICES) {voice_cancel();s_preview_playing=false;}
     audio_stop_tune();
     if(s_view==MUSIC)s_music_choice=-1;
@@ -694,6 +696,7 @@ static void friends_icon(lv_obj_t *parent,int x,int y)
         shape(parent,dx+14,dy+31,6,9,INK,0);
     }
 }
+#include "arcade_ui.inc"
 #include "multiplayer_ui.inc"
 static void make_play_menu(void)
 {
@@ -709,15 +712,13 @@ static void make_play_menu(void)
 }
 static void make_games(void)
 {
-    header_to("Games",PLAY_MENU);label(s_root,"A little game, a happy pet",24,85,320,false);
-    const char *names[]={"Stars","Peekaboo","Bouncy ball"};
-    const char *hints[]={"Catch 5 twinkly stars","Find me 3 times","Give the ball 5 bounces"};
-    for(int i=0;i<3;i++) {
-        lv_obj_t *b=button(s_root,29,121+i*91,310,79,(uint32_t[]){0xffecd1,MINT,BLUE}[i],nav_cb,(int[]){CATCH,HIDE,BALL}[i]);
-        art(b,i==1?pixel_decoration(0):pixel_icon(i==0?4:1),12,13,i==1?320:512);
-        label(b,names[i],77,16,222,true);label(b,hints[i],72,47,232,false);
+    header_to("Games",PLAY_MENU);label(s_root,"Little challenges, big smiles",24,80,320,false);
+    const char *hints[]={"Follow the cups. Best streak!","Aim, bounce, catch a bonus","Roll gently and collect stars","Turn two cards. Find a pair"};
+    for(unsigned i=0;i<ARCADE_COUNT;i++) {
+        lv_obj_t *b=button(s_root,24,106+i*82,320,74,(uint32_t[]){PINK,0xffecd1,MINT,BLUE}[i],arcade_menu_cb,i);
+        art(b,i==0?pixel_decoration(0):i==1?pixel_icon(1):i==2?pixel_icon(4):pixel_collectible(4),12,14,i==0?256:384);
+        label(b,arcade_names[i],62,14,250,true);label(b,hints[i],59,45,254,false);
     }
-
 }
 static void music_cb(lv_event_t *e)
 {
@@ -1007,6 +1008,9 @@ static void make_home(void)
 }
 static void show(View view)
 {
+    if(s_view==ARCADE && view!=ARCADE && s_arc_kind==ARCADE_CUPS)
+        arcade_save_best(pet_state_get()->pet_id,ARCADE_CUPS,s_arc.cups.best);
+    if(view==ARCADE && s_view!=ARCADE) {voice_cancel();audio_stop_tune();s_talking=false;}
     if(s_view==VOICES && view!=VOICES) {voice_cancel();s_preview_playing=false;}
     if(view==VOICES && s_view!=VOICES) {
         voice_cancel();audio_stop_tune();s_talking=false;s_preview_playing=false;
@@ -1046,6 +1050,7 @@ static void show(View view)
     } else if(view==MUSIC) {make_music();
     } else if(view==PLAY_MENU) {make_play_menu();
     } else if(view==MULTIPLAYER) {make_multiplayer();
+    } else if(view==ARCADE) {make_arcade(NULL);
     } else if(view==GAMES) {make_games();
     } else if(view==HIDE) {make_hide();
     } else if(view==BALL) {make_ball();
@@ -1328,6 +1333,7 @@ static void frame(lv_timer_t *t)
     if(s_connection && now-s_connection_tick>=500) { char text[256];voice_status(text,sizeof(text));lv_label_set_text(s_connection,text);s_connection_tick=now; }
     if(now-s_last_tick>=10000) { pet_state_tick((uint32_t)time(NULL)); s_last_tick=now; refresh(); }
     multiplayer_frame(now);
+    if(s_view==ARCADE)arcade_frame(now,NULL);
     if(s_view==HOME) {room_frame(now,vs);keepsake_frame(now,vs);}
     if(s_view==BALL && s_target)ball_frame(now);
     if(s_view==HIDE && s_reveal_until && (int32_t)(now-s_reveal_until)>=0) {

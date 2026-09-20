@@ -5,8 +5,17 @@
 #include "nvs.h"
 #include "../../firmware/components/ui/ui.c"
 static mp_state_t test_mp;
-static unsigned test_mp_chat_invites;
 static unsigned test_mp_open,test_mp_close,test_mp_passes,test_mp_accepts,test_mp_declines,test_mp_invites,test_mp_agains,test_mp_acks;
+
+static unsigned test_mp_chat_invites,test_mp_readies,test_mp_scores,test_mp_flips;
+static float test_tilt_x,test_tilt_y;
+static bool test_sensor=true;
+bool motion_init(void) {return test_sensor;}
+bool motion_read(float *x,float *y) {*x=test_tilt_x;*y=test_tilt_y;return test_sensor;}
+bool multiplayer_game_invite(const char *p,mp_mode_t mode) {assert(*p && mode>=MP_PEGS);test_mp_invites++;return true;}
+bool multiplayer_ready(const char *p) {assert(*p);test_mp_readies++;return true;}
+bool multiplayer_score(const char *p,unsigned score) {assert(*p && score<=20000);test_mp_scores++;return true;}
+bool multiplayer_flip(const char *p,unsigned seq,unsigned card) {assert(*p && seq==test_mp.seq && card<12);test_mp_flips++;return true;}
 void multiplayer_init(void) {}
 void multiplayer_open(const Pet *p) {assert(p);test_mp_open++;}
 void multiplayer_close(void) {test_mp_close++;}
@@ -22,10 +31,11 @@ static unsigned test_restarts;
 void esp_restart(void) {test_restarts++;}
 static Pet saved;
 static bool has_save, fail_save;
+static uint8_t arcade_saved[64];static size_t arcade_saved_size;
 uint32_t esp_random(void) { static uint32_t seed=15; seed=seed*1664525+1013904223; return seed; }
-int nvs_open(const char *n,int mode,int *h) { (void)n;(void)mode;*h=1;return 0; }
-int nvs_get_blob(int h,const char *k,void *out,size_t *n) { (void)h;(void)k;if(!has_save)return 1;memcpy(out,&saved,sizeof saved);*n=sizeof saved;return 0; }
-int nvs_set_blob(int h,const char *k,const void *p,size_t n) { (void)h;(void)k;if(fail_save)return 1;assert(n==sizeof saved);memcpy(&saved,p,n);has_save=true;return 0; }
+int nvs_open(const char *n,int mode,int *h) { (void)mode;*h=!strcmp(n,"pet_arcade")?2:1;return 0; }
+int nvs_get_blob(int h,const char *k,void *out,size_t *n) { (void)k;if(h==2){if(!arcade_saved_size)return 1;assert(*n>=arcade_saved_size);memcpy(out,arcade_saved,arcade_saved_size);*n=arcade_saved_size;return 0;}if(!has_save)return 1;memcpy(out,&saved,sizeof saved);*n=sizeof saved;return 0; }
+int nvs_set_blob(int h,const char *k,const void *p,size_t n) { (void)k;if(fail_save)return 1;if(h==2){assert(n<=sizeof arcade_saved);memcpy(arcade_saved,p,n);arcade_saved_size=n;return 0;}assert(n==sizeof saved);memcpy(&saved,p,n);has_save=true;return 0; }
 int nvs_commit(int h) { (void)h;return 0; }
 void nvs_close(int h) { (void)h; }
 int nvs_erase_key(int h,const char *k) { (void)h;(void)k;has_save=false;return 0; }
@@ -158,7 +168,7 @@ int main(void)
     assert(lv_obj_has_flag(s_pet_heart, LV_OBJ_FLAG_HIDDEN));
     tap(60,385);assert(s_view==FOOD);shot("food");
     tap(73,350);tap(73,350);advance(FOOD_DURATION_MS+300);assert(s_view==PARTY);assert(pet_state_get()->evolution_progress==1);shot("party");
-    tap(180,395);assert(s_view==HOME);tap(140,385);assert(s_view==PLAY_MENU);shot("play-menu");tap(180,154);assert(s_view==GAMES);shot("games");tap(180,158);assert(s_view==CATCH);shot("play");
+    tap(180,395);assert(s_view==HOME);tap(140,385);assert(s_view==PLAY_MENU);shot("play-menu");tap(180,154);assert(s_view==GAMES);shot("games");tap(180,138);assert(s_view==ARCADE && s_arc_kind==ARCADE_CUPS);shot("arcade-cups-ready");show(CATCH);shot("play");
     for(int i=0;i<5;i++){lv_obj_update_layout(s_target);int x=lv_obj_get_x(s_target)+48,y=lv_obj_get_y(s_target)+48;tap(x,y);}
     assert(s_view==PARTY);assert(pet_state_get()->evolution_progress==2);
     show(BATH);shot("bath");tap(60,173);tap(178,159);tap(298,174);tap(70,260);tap(294,264);
@@ -310,7 +320,7 @@ int main(void)
     show(FOOD);tap(180,350);advance(FOOD_DURATION_MS+100);shot("reaction-toast");
     // Peekaboo: wrong guesses and rapid taps are free, three actual finds earn
     // exactly one care star. Navigation cancels a pending reveal without reward.
-    show(GAMES);tap(180,251);assert(s_view==HIDE);shot("peekaboo");
+    show(HIDE);assert(s_view==HIDE);shot("peekaboo");
     unsigned play_before=pet_state_get()->evolution_progress;
     unsigned wrong=(s_hiding+1)%3;tap(76+108*(int)wrong,275);
     assert(s_hits==0 && pet_state_get()->evolution_progress==play_before);
@@ -330,7 +340,7 @@ int main(void)
 
     // Each hit launches a new arc. Landing waits for the child, while flight
     // cannot score again and the fifth bounce finishes before its care reward.
-    show(GAMES);tap(180,343);assert(s_view==BALL);shot("bouncy-ball-ready");
+    show(BALL);assert(s_view==BALL);shot("bouncy-ball-ready");
     play_before=pet_state_get()->evolution_progress;
     advance(1000);int ball_x=lv_obj_get_x(s_target),ball_y=lv_obj_get_y(s_target);
     advance(1500);assert(lv_obj_get_x(s_target)==ball_x && lv_obj_get_y(s_target)==ball_y);
@@ -526,10 +536,11 @@ int main(void)
     {
         Pet before=*pet_state_get();unsigned stars=before.evolution_progress;
         unsigned opens=test_mp_open,closes=test_mp_close;
+        s_mp_mode=MP_BALL;
         test_mp=(mp_state_t){.connected=true,.phase=MP_LOBBY,.count=1};
         test_mp.peers[0]=(mp_peer_t){.user="friend-device",.id="0000000000000042",.name="Rosy",.character=5,.stage=2};
         show(MULTIPLAYER);advance(120);assert(test_mp_open==opens+1);shot("multiplayer-lobby");
-        tap(180,283);assert(test_mp_invites==1);
+        tap(180,317);assert(test_mp_invites==1);
         test_mp.peer=test_mp.peers[0];test_mp.phase=MP_INCOMING;strcpy(test_mp.invite,"invitation");advance(120);
         assert(test_mp_accepts==0);shot("multiplayer-invitation");tap(180,338);assert(test_mp_accepts==1);
         test_mp.phase=MP_PLAYING;test_mp.online=true;test_mp.my_turn=true;strcpy(test_mp.room,"round-one");advance(1000);
@@ -564,8 +575,8 @@ int main(void)
         unsigned chat_stars=pet_state_get()->evolution_progress;
         test_mp=(mp_state_t){.connected=true,.phase=MP_LOBBY,.count=1};
         test_mp.peers[0]=(mp_peer_t){.user="friend-device",.id="0000000000000042",.name="Larry",.character=6,.stage=3,.chat=true};
-        show(MULTIPLAYER);tap(270,212);assert(s_mp_chat_mode);shot("pet-chat-lobby");
-        tap(180,300);assert(test_mp_chat_invites==1);
+        show(MULTIPLAYER);tap(270,191);assert(s_mp_chat_mode);shot("pet-chat-lobby");
+        tap(180,319);assert(test_mp_chat_invites==1);
         test_mp.peer=test_mp.peers[0];test_mp.chat=true;test_mp.phase=MP_INCOMING;strcpy(test_mp.invite,"chat-invite");advance(140);
         shot("pet-chat-invitation");unsigned accepts=test_mp_accepts;tap(180,338);assert(test_mp_accepts==accepts+1);
         test_mp.phase=MP_PLAYING;strcpy(test_mp.room,"chat-room");advance(140);assert(s_mp_caption && !s_mp_ball);shot("pet-chat-thinking");
@@ -709,6 +720,54 @@ int main(void)
     saved = snapshot; pet_state_init();
     // Back works across the whole corner, not only the old 48px tile.
     const int back_points[][2]={{2,2},{85,2},{2,73},{85,73},{44,38}};
+    // New arcade: real hit targets, distinct simulations, persistence and network controls.
+    {
+        Pet arcade_before=*pet_state_get();
+        for(unsigned game=0;game<ARCADE_COUNT;game++) {
+            show(GAMES);tap(180,140+82*game);assert(s_view==ARCADE && s_arc_kind==game);
+            assert(!s_arc_started);char name[40];snprintf(name,sizeof name,"arcade-%u-ready",game);shot(name);
+            tap(game==ARCADE_TILT?100:180,419);assert(s_arc_started);
+            if(game==ARCADE_CUPS){
+                advance(1900);assert(s_arc.cups.phase==ARC_SHUFFLE);shot("arcade-cups-shuffle");
+                advance(3000);assert(s_arc.cups.phase==ARC_PICK);
+                unsigned slot=s_arc.cups.slot[0];tap(14+20+110*slot+40,108+165);assert(s_arc.score==1);shot("arcade-cups-found");
+                tap(4,4);assert(s_view==GAMES && arcade_best(pet_state_get()->pet_id,ARCADE_CUPS)==1);
+            } else if(game==ARCADE_PEGS){
+                tap(90,290);tap(180,419);assert(s_arc.pegs.flying);advance(600);shot("arcade-pegs-bounce");
+                for(unsigned i=0;i<1500 && !s_arc.done;i++){if(!s_arc.pegs.flying){arcade_aim(&s_arc,30+(i%7)*44,180);arcade_fire(&s_arc);}advance(60);}
+                assert(s_arc.done && s_arc_completed);shot("arcade-pegs-score");
+            } else if(game==ARCADE_TILT){
+                test_tilt_x=.25f;advance(900);assert(s_arc.tilt.x>170);shot("arcade-tilt-playing");
+                test_tilt_x=0;advance(46000);assert(s_arc.done);shot("arcade-tilt-score");
+            } else {
+                for(unsigned value=0;value<6;value++){
+                    for(unsigned i=0;i<12;i++)if(s_arc.memory.deck[i]==value)tap(14+10+(i%4)*82+35,108+12+(i/4)*81+35);
+                    advance(1000);
+                }
+                assert(s_arc.done && s_arc.score==1200);shot("arcade-memory-score");
+                assert(arcade_best(pet_state_get()->pet_id,ARCADE_MEMORY)==1200);
+            }
+            unsigned record=arcade_best(pet_state_get()->pet_id,(arcade_kind_t)game);
+            fail_save=true;assert(!arcade_save_best(pet_state_get()->pet_id,(arcade_kind_t)game,record+1));fail_save=false;
+            assert(arcade_best(pet_state_get()->pet_id,(arcade_kind_t)game)==record);
+        }
+        assert(arcade_best(pet_state_get()->pet_id+1,ARCADE_MEMORY)==0);
+        s_arc_kind=ARCADE_MEMORY;show(ARCADE);tap(180,419);
+        unsigned reward_before=pet_state_get()->evolution_progress;
+        fail_save=true;s_arc.score=1200;s_arc.done=true;advance(80);
+        assert(!s_arc_saved && pet_state_get()->evolution_progress==reward_before);
+        fail_save=false;tap(180,419);assert(pet_state_get()->evolution_progress==reward_before+1);
+        advance(80);assert(pet_state_get()->evolution_progress==reward_before+1);
+        saved=arcade_before;pet_state_init();show(HOME);
+        test_mp=(mp_state_t){.phase=MP_PLAYING,.connected=true,.online=true,.mode=MP_MEMORY,.seed=77};
+        strcpy(test_mp.room,"memory-round");strcpy(test_mp.peer.name,"Olive");memset(test_mp.cards,-1,12);
+        show(MULTIPLAYER);tap(180,419);assert(test_mp_readies==1 && !s_arc_started);
+        test_mp.ready=true;test_mp.started=true;test_mp.my_turn=true;advance(180);
+        tap(62,150);assert(test_mp_flips==1);test_mp.my_turn=false;advance(150);tap(142,150);assert(test_mp_flips==1);
+        test_mp.cards[0]=test_mp.cards[1]=4;test_mp.score=1;test_mp.matched=3;test_mp.seq=2;advance(150);shot("arcade-memory-versus");
+        test_mp.phase=MP_FINISHED;test_mp.submitted=test_mp.peer_submitted=true;test_mp.peer_score=2;test_mp.score=4;advance(150);shot("arcade-memory-versus-score");
+        show(HOME);test_mp=(mp_state_t){0};s_mp_mode=MP_PEGS;s_mp_chat_mode=false;
+    }
     const View back_views[]={FOOD,GAMES,SETTINGS,ALBUM,DECORATIONS,TREATS,PROFILE,TRAIT,RESET,PLAY_MENU,MUSIC,MULTIPLAYER,CATCH,HIDE,BALL};
     const View back_dest[]={HOME,PLAY_MENU,HOME,REWARDS,REWARDS,FOOD,SETTINGS,PROFILE,SETTINGS,HOME,PLAY_MENU,PLAY_MENU,GAMES,GAMES,GAMES};
     for(unsigned v=0;v<sizeof back_views/sizeof back_views[0];v++) {
