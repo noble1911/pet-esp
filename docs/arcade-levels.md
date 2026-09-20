@@ -72,3 +72,20 @@ Rollback: firmware `pet-arcade-v1.1`; gateway `f2c54ed`. The deployed pre-levels
 gateway image is saved as `esp-gateway:before-arcade-levels`, with changed sources
 under `~/pet-arcade-levels-backup`. Keep NVS, device identity headers, environment
 and the playdate database when restoring.
+
+## Installed on Sprout — 2026-09-20
+
+Release `pet-arcade-levels-v1` (`a755140`) was flashed to the verified second
+board, MAC `3c:dc:75:6e:b5:20`. All flash hashes verified. NVS was backed up
+privately and retained; the saved pet loaded at stage 2 with its existing care.
+The 55-second reboot capture contains one normal boot, no display-transfer
+errors, no panic and no backtrace. Motion, display, UI and voice gateway startup
+all succeeded. Hands-on acceptance of the new levels remains for the user.
+
+The Sprout image is 2,758,128 bytes, leaving 387,600 bytes (378.5 KiB) in the app
+partition. Static DIRAM use is 241,099 bytes, leaving 100,661. All eight characters
+remain. Olive's separate identity-specific build is ready but has not been flashed.
+
+Gateway `f61417a` is deployed and healthy; all 113 tests pass in the deployed
+container as well as locally. Logs: `/tmp/pet-arcade-levels-flash.log`,
+`/tmp/pet-arcade-levels-boot.log`, `/tmp/pet-arcade-levels-deployed-tests.log`.
