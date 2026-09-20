@@ -45,3 +45,7 @@ releases/pixel-v1/*.bin
 firmware/components/voice/secrets.h
 backup/pre-voice-v1/
 docs/previews/voice-v1/*.ppm
+
+# Per-device credentials and isolated firmware builds
+firmware/private/
+firmware/build-*/

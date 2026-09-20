@@ -46,6 +46,17 @@ class PetTests(unittest.IsolatedAsyncioTestCase):
         for event in ('finished_hide_game','finished_ball_game','butterfly_visit'):
             PetState(**{**STATE,'recent_event':event,'recent_event_age_seconds':0})
 
+    def test_friendship_sticker_is_independent_of_care_stars(self):
+        pet=PetState(**{**STATE,'stars':0,'friends_met':1,'inventory':[0]*13+[218,0,0]})
+        rewards=reward_snapshot(pet)
+        self.assertEqual(rewards['stickers'],1)
+        self.assertEqual(rewards['wall_sticker'],'Best buddies')
+        self.assertEqual(rewards['stars_to_next_sticker'],5)
+        pet.friends_met=0
+        self.assertIsNone(reward_snapshot(pet)['wall_sticker'])
+        pet.stars=90;pet.friends_met=1
+        self.assertEqual(reward_snapshot(pet)['stickers'],19)
+
     def test_room_gifts_and_wall_sticker(self):
         for value in range(256):
             inventory=[0]*16

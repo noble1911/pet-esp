@@ -1,7 +1,8 @@
 # Playdates: multiplayer proposal
 
-Status: multiplayer remains a proposal. Play → Multiplayer now has a coming-soon
-page; no discovery, invitations or shared games are implemented.
+Status: the first implementation is now in [multiplayer-v1.md](multiplayer-v1.md).
+Two-device physical acceptance remains pending until the second board is attached.
+The original design below records the intended scope and follow-on ideas.
 User preference: home Wi-Fi first. Two physical ESP devices, two independent pets.
 Assume the second device is the same supported Waveshare board; verify before flashing.
 

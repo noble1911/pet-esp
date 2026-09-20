@@ -26,3 +26,9 @@ void voice_note_event(pet_event_t event);
 bool voice_react(const Pet *pet, const char *activity);
 
 bool voice_make_tune(const Pet *pet, const char *activity);
+
+// Shared network ownership; credentials are bound to the physical board MAC.
+bool voice_wifi_connected(void);
+const char *voice_device_id(void);
+const char *voice_device_token(void);
+const char *voice_gateway(void);

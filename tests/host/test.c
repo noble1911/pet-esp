@@ -4,6 +4,18 @@
 #include <stdio.h>
 #include "nvs.h"
 #include "../../firmware/components/ui/ui.c"
+static mp_state_t test_mp;
+static unsigned test_mp_open,test_mp_close,test_mp_passes,test_mp_accepts,test_mp_declines,test_mp_invites,test_mp_agains,test_mp_acks;
+void multiplayer_init(void) {}
+void multiplayer_open(const Pet *p) {assert(p);test_mp_open++;}
+void multiplayer_close(void) {test_mp_close++;}
+void multiplayer_snapshot(mp_state_t *out) {*out=test_mp;}
+bool multiplayer_invite(const char *p) {assert(*p);test_mp_invites++;return true;}
+bool multiplayer_accept(const char *p) {assert(*p);test_mp_accepts++;return true;}
+bool multiplayer_decline(const char *p) {assert(*p);test_mp_declines++;return true;}
+bool multiplayer_pass(const char *p,unsigned seq) {assert(*p && seq==test_mp.seq);test_mp_passes++;return true;}
+bool multiplayer_again(const char *p) {assert(*p);test_mp_agains++;return true;}
+void multiplayer_ack(uint64_t receipt,uint64_t pet) {assert(receipt && pet==pet_state_get()->pet_id);test_mp_acks++;}
 static unsigned test_restarts;
 void esp_restart(void) {test_restarts++;}
 static Pet saved;
@@ -343,7 +355,7 @@ int main(void)
     tap(48,46);assert(s_view==REWARDS);tap(180,190);assert(s_view==ALBUM);
     s_album_page=0;show(ALBUM);tap(310,365);assert(s_album_page==1);shot("stickers-next");
     tap(70,175);assert(strstr(lv_label_get_text(s_hint),"5 more") && s_view==ALBUM && pet_wall_sticker(pet_state_get())==-1);
-    tap(60,365);assert(s_album_page==0);tap(60,365);assert(s_album_page==2);tap(310,365);assert(s_album_page==0);
+    tap(60,365);assert(s_album_page==0);tap(60,365);assert(s_album_page==3);tap(310,365);assert(s_album_page==0);
     fail_save=true;tap(70,175);assert(s_view==ALBUM && pet_wall_sticker(pet_state_get())==-1);
     assert(strstr(lv_label_get_text(s_hint),"Couldn't save"));fail_save=false;
     tap(70,175);assert(s_view==HOME && pet_wall_sticker(pet_state_get())==0 && s_keepsake_until);
@@ -363,7 +375,7 @@ int main(void)
     // All eighteen stickers activate via real touch. Replays are bounded, do
     // not consume rewards, and leaving/starting voice cancels the animation.
     Pet before_keepsakes=*pet_state_get();
-    for(unsigned i=0;i<PET_STICKER_COUNT;i++) {
+    for(unsigned i=0;i<PET_CARE_STICKER_COUNT;i++) {
         s_album_page=i/6;show(ALBUM);tap(76+(i%3)*108,180+((i%6)/3)*100);
         assert(s_view==HOME && pet_wall_sticker(pet_state_get())==(int)i && s_keepsake_until);
         advance(80);assert(s_face==keepsake_actions[i].pose && test_sfx==keepsake_actions[i].sound);
@@ -453,10 +465,51 @@ int main(void)
     s_muted=true;tap(180,363);assert(test_compositions==composed+1);s_muted=false;
     tap(180,150);assert(test_tune);tap(48,46);assert(s_view==PLAY_MENU && !test_tune);
     assert(pet_state_get()->evolution_progress==music_before);
-    tap(180,365);assert(s_view==MULTIPLAYER);shot("multiplayer-placeholder");
-    tap(180,401);assert(s_view==PLAY_MENU);tap(180,154);assert(s_view==GAMES);
+    tap(180,365);assert(s_view==MULTIPLAYER);shot("multiplayer-connecting");
+    tap(48,46);assert(s_view==PLAY_MENU);tap(180,154);assert(s_view==GAMES);
     tap(4,4);assert(s_view==PLAY_MENU);tap(4,4);assert(s_view==HOME);
     tap(140,30);assert(s_view==PLAY_MENU);tap(4,4);assert(s_view==HOME);
+    // Real UI with deterministic game snapshots: invitations require a tap,
+    // rapid taps cannot double-pass, and two whole-character buffers animate.
+    {
+        Pet before=*pet_state_get();unsigned stars=before.evolution_progress;
+        unsigned opens=test_mp_open,closes=test_mp_close;
+        test_mp=(mp_state_t){.connected=true,.phase=MP_LOBBY,.count=1};
+        test_mp.peers[0]=(mp_peer_t){.user="friend-device",.id="0000000000000042",.name="Rosy",.character=5,.stage=2};
+        show(MULTIPLAYER);advance(120);assert(test_mp_open==opens+1);shot("multiplayer-lobby");
+        tap(180,283);assert(test_mp_invites==1);
+        test_mp.peer=test_mp.peers[0];test_mp.phase=MP_INCOMING;strcpy(test_mp.invite,"invitation");advance(120);
+        assert(test_mp_accepts==0);shot("multiplayer-invitation");tap(180,338);assert(test_mp_accepts==1);
+        test_mp.phase=MP_PLAYING;test_mp.online=true;test_mp.my_turn=true;strcpy(test_mp.room,"round-one");advance(1000);
+        shot("multiplayer-my-turn");int talks=test_starts;test_boot=true;advance(150);test_boot=false;advance(150);assert(test_starts==talks);
+        tap(80,312);tap(80,312);assert(test_mp_passes==1);
+        test_mp.seq=1;test_mp.my_turn=false;advance(300);shot("multiplayer-pass");
+        assert(lv_obj_get_x(s_mp_ball)>32 && lv_obj_get_x(s_mp_ball)<240);
+        advance(600);tap(290,312);assert(test_mp_passes==1);
+        test_mp.phase=MP_WAITING;advance(120);shot("multiplayer-reconnecting");assert(strstr(lv_label_get_text(s_hint),"reconnecting"));
+        test_mp.phase=MP_PLAYING;test_mp.seq=2;test_mp.my_turn=true;advance(1000);tap(80,312);assert(test_mp_passes==2);
+        // Each pair uses independent mutable render storage, including same-character play.
+        for(unsigned a=0;a<PET_CHARACTER_COUNT;a++)for(unsigned b=0;b<PET_CHARACTER_COUNT;b++) {
+            saved.genes[GENE_PATTERN]=(uint8_t)(PET_CHARACTER_MARKER+a);pet_state_init();test_mp.peer.character=b;
+            show(MULTIPLAYER);advance(200);assert(s_mp_art[0].image.data!=s_mp_art[1].image.data);
+            if(a!=b)assert(memcmp(s_mp_art[0].pixels,s_mp_art[1].pixels,sizeof s_mp_art[0].pixels));
+        }
+        saved=before;pet_state_init();
+        test_mp.peer.character=5;test_mp.seq=10;test_mp.phase=MP_FINISHED;test_mp.my_turn=false;
+        test_mp.reward_id=42;test_mp.reward_pet=before.pet_id;test_mp.reward_friend=0x42;test_mp.friends=1;
+        fail_save=true;advance(1000);assert(pet_state_get()->evolution_progress==stars && test_mp_acks==0);
+        fail_save=false;advance(700);assert(pet_state_get()->evolution_progress==stars+1 && test_mp_acks>0);
+        assert(pet_state_get()->friends_met==1 && pet_sticker_unlocked(pet_state_get(),18));
+        pet_state_init();advance(700);assert(pet_state_get()->evolution_progress==stars+1);shot("multiplayer-celebration");
+        assert(pet_state_playdate(42,before.pet_id,0x42,1));assert(pet_state_playdate(41,before.pet_id,0x42,1));
+        assert(pet_state_get()->evolution_progress==stars+1);
+        assert(!pet_state_playdate(43,before.pet_id+1,0x42,1));
+        tap(180,415);assert(test_mp_agains==1);
+        tap(4,4);assert(s_view==PLAY_MENU && test_mp_close==closes+1);
+        test_mp=(mp_state_t){0};s_album_page=3;show(ALBUM);shot("buddy-sticker");tap(76,180);
+        assert(s_view==HOME && s_keepsake_until && pet_wall_sticker(pet_state_get())==18);shot("buddy-sticker-play");
+        saved=before;pet_state_init();show(HOME);
+    }
     show(FOOD);tap(180,350);assert(test_sfx==SFX_TOAST);tap(48,46);
     show(BALL);tap(lv_obj_get_x(s_target)+48,lv_obj_get_y(s_target)+48);assert(test_sfx==SFX_BOUNCE);
     show(HIDE);tap(76+108*(int)s_hiding,275);assert(test_sfx==SFX_FOUND);show(HOME);

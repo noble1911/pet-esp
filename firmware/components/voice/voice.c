@@ -8,6 +8,7 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
+#include "esp_mac.h"
 #include "esp_websocket_client.h"
 #include "esp_log.h"
 #include "nvs.h"
@@ -24,8 +25,22 @@
 #ifndef PET_DEVICE_TOKEN
 #define PET_DEVICE_TOKEN ""
 #endif
-#define PET_USER_ID "pet-meadow-3cdc756e3104"
+#ifdef PET_IDENTITY_HEADER
+#include PET_IDENTITY_HEADER
+#endif
+#ifndef PET_DEVICE_MAC
+#define PET_DEVICE_MAC "3cdc756e3104"
+#endif
+#ifndef PET_AUTH_TOKEN
+#define PET_AUTH_TOKEN PET_DEVICE_TOKEN
+#endif
+static char s_device_id[40];
+static bool s_identity_matches;
+const char *voice_device_id(void) {return s_device_id;}
+const char *voice_device_token(void) {return s_identity_matches?PET_AUTH_TOKEN:"";}
+bool voice_wifi_connected(void);
 #define PET_GATEWAY "ws://192.168.1.117:8770/ws"
+const char *voice_gateway(void) {return PET_GATEWAY;}
 
 typedef struct { int kind; Pet pet; char activity[32]; pet_event_t event; unsigned event_age; size_t len; uint8_t pcm[640]; } Command;
 enum { START=1, END, CANCEL, PCM, CHECK, HELLO, REMARK, REACT, MUSIC };
@@ -44,6 +59,7 @@ void voice_note_event(pet_event_t event)
 }
 static atomic_int s_state=VOICE_OFFLINE;
 static atomic_bool s_wifi, s_ready, s_capturing, s_overflow, s_requested;
+bool voice_wifi_connected(void) {return atomic_load(&s_wifi);}
 static portMUX_TYPE s_lock=portMUX_INITIALIZER_UNLOCKED;
 static char s_ip[20]="--", s_caption[512]="", s_check[48]="";
 static char s_rx[8192];
@@ -222,8 +238,8 @@ static void worker(void *arg)
         if(xQueueReceive(s_commands,&c,pdMS_TO_TICKS(100))!=pdTRUE) continue;
         cJSON *o=NULL;
         if(c.kind==HELLO) {
-            o=message("hello");cJSON_AddNumberToObject(o,"proto",1);cJSON_AddStringToObject(o,"device_token",PET_DEVICE_TOKEN);
-            cJSON_AddStringToObject(o,"user_id",PET_USER_ID);cJSON_AddStringToObject(o,"surface","pet");
+            o=message("hello");cJSON_AddNumberToObject(o,"proto",1);cJSON_AddStringToObject(o,"device_token",voice_device_token());
+            cJSON_AddStringToObject(o,"user_id",voice_device_id());cJSON_AddStringToObject(o,"surface","pet");
             cJSON *a=cJSON_AddObjectToObject(o,"capture");cJSON_AddNumberToObject(a,"rate",16000);
             a=cJSON_AddObjectToObject(o,"playback");cJSON_AddNumberToObject(a,"rate",16000);send_json(o);
         } else if(c.kind==START && atomic_load(&s_ready)) {
@@ -252,6 +268,10 @@ static void worker(void *arg)
 }
 void voice_init(void)
 {
+    uint8_t mac[6];esp_read_mac(mac,ESP_MAC_WIFI_STA);
+    char mac_id[13];snprintf(mac_id,sizeof mac_id,"%02x%02x%02x%02x%02x%02x",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+    snprintf(s_device_id,sizeof s_device_id,"pet-meadow-%s",mac_id);
+    s_identity_matches=!strcmp(mac_id,PET_DEVICE_MAC);
     nvs_handle_t h;uint8_t enabled=1;
     if(nvs_open("pet_voice",NVS_READONLY,&h)==ESP_OK) {nvs_get_u8(h,"auto",&enabled);nvs_close(h);}
     atomic_store(&s_auto,enabled!=0);

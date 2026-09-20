@@ -63,7 +63,8 @@ typedef struct {
     uint8_t  energy;
     uint8_t  hygiene;
 
-    // Inventory: slot 13 = wall sticker (200..217), slot 14 = room mask (128..191),
+    // Inventory: slots 0..7 = little-endian playdate receipt, slot 8 = marker 215.
+    // Slot 13 = wall sticker (200..217), slot 14 = room mask (128..191),
     // slot 15 = legacy room gift (100..105), retained for rollback. Zero = empty.
     uint8_t  inventory[16];
 
@@ -164,9 +165,13 @@ void pet_breed(const Pet *a, const Pet *b,
 
 bool pet_state_set_name(const char *name);
 
-#define PET_STICKER_COUNT 18
+#define PET_CARE_STICKER_COUNT 18
+#define PET_STICKER_COUNT 19
 #define PET_DECORATION_COUNT 6
 unsigned pet_sticker_count(const Pet *pet);
+bool pet_sticker_unlocked(const Pet *pet,unsigned sticker);
+// Single atomic save: care reward, friendship and durable server receipt.
+bool pet_state_playdate(uint64_t receipt,uint64_t pet_id,uint64_t friend_id,unsigned friends);
 unsigned pet_decoration_threshold(unsigned decoration); // 0-based; invalid => UINT32_MAX
 bool pet_decoration_unlocked(const Pet *pet, unsigned decoration);
 unsigned pet_room_gifts(const Pet *pet); // unlocked decorations as a six-bit mask

@@ -7,6 +7,7 @@
 #include "power.h"
 #include "audio.h"
 #include "voice.h"
+#include "multiplayer.h"
 #include <string.h>
 #include "esp_random.h"
 #include "esp_system.h"
@@ -344,11 +345,11 @@ static void volume_cb(lv_event_t *e)
 }
 static const char *activity(void)
 {
-    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits","special treats","choosing stickers or gifts","going to sleep","choosing games, music or multiplayer","multiplayer coming soon"}[s_view];
+    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits","special treats","choosing stickers or gifts","going to sleep","choosing games, music or multiplayer","playing a cooperative playdate"}[s_view];
 }
 static void talk_begin(void)
 {
-    if(s_talking) return;
+    if(s_talking || s_view==MULTIPLAYER) return;
     audio_stop_tune();
     if(s_view==MUSIC)s_music_choice=-1;
     s_reaction_until=0;s_next_reaction=lv_tick_get()+45000;
@@ -386,16 +387,17 @@ static lv_obj_t *art(lv_obj_t *parent,const lv_image_dsc_t *src,int x,int y,unsi
     lv_obj_set_pos(o,x,y);lv_obj_remove_flag(o,LV_OBJ_FLAG_CLICKABLE);return o;
 }
 static const char *sticker_names[PET_STICKER_COUNT]={"Apple","Ball","Moon","Bubbles","Star","Heart",
-    "Butterfly","Flower","Bunny","Rainbow","Kite","Water can","Cloud","Sun","Music","Crown","Book","Present"};
+    "Butterfly","Flower","Bunny","Rainbow","Kite","Water can","Cloud","Sun","Music","Crown","Book","Present","Best buddies"};
 static const char *decor_names[PET_DECORATION_COUNT]={"Flowers","Bunting","Teddy","Moon lamp","Cushion","Trophy"};
 static void page_cb(lv_event_t *e)
 {
-    s_album_page=(s_album_page+3+(int)(intptr_t)lv_event_get_user_data(e))%3;show(ALBUM);
+    s_album_page=(s_album_page+4+(int)(intptr_t)lv_event_get_user_data(e))%4;show(ALBUM);
 }
 static void sticker_cb(lv_event_t *e)
 {
     int i=(int)(intptr_t)lv_event_get_user_data(e);char text[80];
-    if(i>=0 && (unsigned)i>=pet_sticker_count(pet_state_get())) {
+    if(i>=0 && !pet_sticker_unlocked(pet_state_get(),(unsigned)i)) {
+        if(i==PET_CARE_STICKER_COUNT) {lv_label_set_text(s_hint,"Finish a playdate to earn Best buddies!");audio_play(SFX_SELECT);return;}
         snprintf(text,sizeof text,"%s: %lu more stars",sticker_names[i],
                  (unsigned long)((i+1)*5-pet_state_get()->evolution_progress));
         lv_label_set_text(s_hint,text);audio_play(SFX_SELECT);return;
@@ -502,26 +504,27 @@ static void make_trait(void)
 static void make_album(void)
 {
     header_to("My stickers",REWARDS);const Pet *p=pet_state_get();unsigned count=pet_sticker_count(p);char text[80];
-    snprintf(text,sizeof text,"%u / 18 stickers  |  %lu stars",count,(unsigned long)p->evolution_progress);
+    snprintf(text,sizeof text,"%u / 19 stickers  |  %lu stars",count,(unsigned long)p->evolution_progress);
     label(s_root,text,24,85,320,false);
     if(count==PET_STICKER_COUNT)snprintf(text,sizeof text,"Your collection is complete!");
-    else snprintf(text,sizeof text,"%lu more %s to your next sticker",
-                  (unsigned long)((count+1)*5-p->evolution_progress),((count+1)*5-p->evolution_progress)==1?"star":"stars");
+    else if(p->evolution_progress>=90)snprintf(text,sizeof text,"Play together for your buddy sticker!");
+    else {unsigned more=5-p->evolution_progress%5;snprintf(text,sizeof text,"%u more %s to your next sticker",more,more==1?"star":"stars");}
     s_hint=label(s_root,text,24,108,320,false);
     for(unsigned j=0;j<6;j++) {
-        unsigned i=s_album_page*6+j;bool earned=i<count;
+        unsigned i=s_album_page*6+j;if(i>=PET_STICKER_COUNT)break;bool earned=pet_sticker_unlocked(p,i);
         lv_obj_t *b=button(s_root,29+(j%3)*108,141+(j/3)*100,94,91,earned?0xffecd1:0xe9ede6,sticker_cb,(int)i);
         if(earned)art(b,pixel_collectible(i),23,3,512);
         else {shape(b,36,9,22,22,0xb4beb5,0);shape(b,41,14,12,17,0xe9ede6,0);shape(b,31,24,32,22,0xb4beb5,0);}
-        label(b,sticker_names[i],1,52,92,false);
+        label(b,i==18?"Buddies":sticker_names[i],1,52,92,false);
         char threshold[24];
         if(pet_wall_sticker(p)==(int)i)snprintf(threshold,sizeof threshold,"On wall");
         else if(earned)snprintf(threshold,sizeof threshold,"Tap to play");
+        else if(i==PET_CARE_STICKER_COUNT)snprintf(threshold,sizeof threshold,"Playdate");
         else snprintf(threshold,sizeof threshold,"%u stars",(i+1)*5);
         label(b,threshold,0,71,94,false);
     }
     lv_obj_t *prev=button(s_root,29,344,64,44,MINT,page_cb,-1);label(prev,LV_SYMBOL_LEFT,0,9,64,true);
-    snprintf(text,sizeof text,"Page %u of 3",s_album_page+1);label(s_root,text,105,357,158,false);
+    snprintf(text,sizeof text,"Page %u of 4",s_album_page+1);label(s_root,text,105,357,158,false);
     lv_obj_t *next=button(s_root,275,344,64,44,MINT,page_cb,1);label(next,LV_SYMBOL_RIGHT,0,9,64,true);
     if(pet_wall_sticker(p)>=0) {
         lv_obj_t *clear=button(s_root,29,399,310,40,BLUE,sticker_cb,-1);label(clear,"Take sticker off wall",0,11,310,false);
@@ -578,7 +581,8 @@ static const struct {pixel_face_t pose; sfx_id_t sound; keepsake_motion_t motion
     {PIXEL_PLAY,SFX_EMOTE,BOUNCE,"A little dum-de-dum dance!"},
     {PIXEL_HAPPY,SFX_GIFT,SHOWER,"Royal wiggles! Ta-da!"},
     {PIXEL_SLEEP,SFX_SLEEP,SWAY,"Once upon a tiny leaf..."},
-    {PIXEL_HAPPY,SFX_GIFT,SHOWER,"Surprise! A happy little wiggle!"}
+    {PIXEL_HAPPY,SFX_GIFT,SHOWER,"Surprise! A happy little wiggle!"},
+    {PIXEL_HAPPY,SFX_MEET,ORBIT,"Best buddies! A little dance together!"}
 };
 static void play_keepsake(unsigned sticker)
 {
@@ -640,6 +644,7 @@ static void friends_icon(lv_obj_t *parent,int x,int y)
         shape(parent,dx+14,dy+31,6,9,INK,0);
     }
 }
+#include "multiplayer_ui.inc"
 static void make_play_menu(void)
 {
     header("Let's play!");label(s_root,"What shall we do?",24,85,320,false);
@@ -651,17 +656,6 @@ static void make_play_menu(void)
         else art(b,i==0?pixel_icon(1):pixel_collectible(14),20,23,512);
         label(b,names[i],88,20,218,true);label(b,hints[i],82,55,228,false);
     }
-}
-static void make_multiplayer(void)
-{
-    header_to("Multiplayer",PLAY_MENU);
-    lv_obj_t *picture=shape(s_root,124,117,120,88,BLUE,18);
-    friends_icon(picture,35,22);
-    label(s_root,"Playdates are coming!",24,239,320,true);
-    label(s_root,"Play together with another pet.",24,285,320,false);
-    label(s_root,"Not available yet.",24,320,320,false);
-    lv_obj_t *back=button(s_root,74,377,220,54,MINT,nav_cb,PLAY_MENU);
-    label(back,"Back to Play",0,18,220,false);
 }
 static void make_games(void)
 {
@@ -963,6 +957,10 @@ static void make_home(void)
 }
 static void show(View view)
 {
+    if(s_view==MULTIPLAYER && view!=MULTIPLAYER)multiplayer_close();
+    if(view==MULTIPLAYER && s_view!=MULTIPLAYER) {
+        voice_cancel();audio_stop_tune();s_talking=false;multiplayer_open(pet_state_get());
+    }
     if(s_view==MUSIC && view!=MUSIC) {audio_stop_tune();if(s_music_choice==MUSIC_COMPOSE)voice_cancel();}
     if(s_talking && !s_boot_down)talk_end();
     s_mic=NULL;s_voice_status=NULL;s_caption_label=NULL;s_connection=NULL;s_name_input=NULL;s_name_error=NULL;
@@ -1244,6 +1242,7 @@ static void frame(lv_timer_t *t)
     }
     if(s_connection && now-s_connection_tick>=500) { char text[256];voice_status(text,sizeof(text));lv_label_set_text(s_connection,text);s_connection_tick=now; }
     if(now-s_last_tick>=10000) { pet_state_tick((uint32_t)time(NULL)); s_last_tick=now; refresh(); }
+    multiplayer_frame(now);
     if(s_view==HOME) {room_frame(now,vs);keepsake_frame(now,vs);}
     if(s_view==BALL && s_target)ball_frame(now);
     if(s_view==HIDE && s_reveal_until && (int32_t)(now-s_reveal_until)>=0) {

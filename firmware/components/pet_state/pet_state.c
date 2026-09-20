@@ -376,7 +376,29 @@ bool pet_state_set_name(const char *name)
 unsigned pet_sticker_count(const Pet *pet)
 {
     unsigned n=pet ? pet->evolution_progress/5 : 0;
-    return n>PET_STICKER_COUNT ? PET_STICKER_COUNT : n;
+    return (n>PET_CARE_STICKER_COUNT ? PET_CARE_STICKER_COUNT : n)+(pet && pet->friends_met>0 ? 1:0);
+}
+bool pet_sticker_unlocked(const Pet *pet,unsigned sticker)
+{
+    return pet && sticker<PET_STICKER_COUNT && (sticker==PET_CARE_STICKER_COUNT?pet->friends_met>0:pet->evolution_progress>=(sticker+1)*5);
+}
+bool pet_state_playdate(uint64_t receipt,uint64_t pet_id,uint64_t friend_id,unsigned friends)
+{
+    if(!s_have_pet || !receipt || pet_id!=s_pet.pet_id || !friend_id || friend_id==pet_id || !friends || friends>65535)return false;
+    uint64_t last=0;
+    if(s_pet.inventory[8]==215)for(unsigned i=0;i<8;i++)last|=(uint64_t)s_pet.inventory[i]<<(i*8);
+    if(receipt<=last)return true; // Persisted already; safe to acknowledge a replay.
+    Pet next=s_pet;
+    for(unsigned i=0;i<8;i++)next.inventory[i]=(uint8_t)(receipt>>(i*8));
+    next.inventory[8]=215;
+    if(next.evolution_progress<UINT32_MAX)next.evolution_progress++;
+    next.stage=stage_for_stars(next.evolution_progress);
+    unsigned happy=next.happiness+30;next.happiness=happy>100?100:happy;
+    if(friends>next.friends_met)next.friends_met=(uint16_t)friends;
+    bool known=false;for(unsigned i=0;i<8;i++)if(next.recent_friends[i]==friend_id)known=true;
+    if(!known) {memmove(next.recent_friends+1,next.recent_friends,7*sizeof(uint64_t));next.recent_friends[0]=friend_id;}
+    if(!pet_state_save(&next))return false;
+    s_pet=next;return true;
 }
 unsigned pet_decoration_threshold(unsigned decoration)
 {
@@ -430,11 +452,11 @@ int pet_wall_sticker(const Pet *pet)
 {
     if(!pet)return -1;
     int sticker=(int)pet->inventory[13]-200;
-    return sticker>=0 && (unsigned)sticker<pet_sticker_count(pet)?sticker:-1;
+    return sticker>=0 && pet_sticker_unlocked(pet,(unsigned)sticker)?sticker:-1;
 }
 bool pet_set_wall_sticker(int sticker)
 {
-    if(!s_have_pet || sticker < -1 || (sticker>=0 && (unsigned)sticker>=pet_sticker_count(&s_pet)))return false;
+    if(!s_have_pet || sticker < -1 || (sticker>=0 && !pet_sticker_unlocked(&s_pet,(unsigned)sticker)))return false;
     uint8_t value=sticker<0?0:(uint8_t)(200+sticker);
     if(s_pet.inventory[13]==value)return true;
     Pet next=s_pet;next.inventory[13]=value;

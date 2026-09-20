@@ -54,6 +54,20 @@ const lv_image_dsc_t *pixel_icon(unsigned kind)
 #include "playtime_art.h"
 const lv_image_dsc_t *pixel_collectible(unsigned kind)
 {
+    if(kind==18) {
+        static uint32_t pixels[24*24];static lv_image_dsc_t image;static bool ready;
+        if(!ready) {
+            const unsigned rows[]={0x66,0xff,0xff,0xff,0x7e,0x3c,0x18};
+            for(unsigned heart=0;heart<2;heart++)for(unsigned y=0;y<7;y++)for(unsigned x=0;x<8;x++)if(rows[y]&(1u<<x)) {
+                unsigned px=2+heart*10+x,py=3+heart*9+y;
+                pixels[(py-1)*24+px]=pixels[(py+1)*24+px]=pixels[py*24+px-1]=pixels[py*24+px+1]=0xff3d203d;
+            }
+            for(unsigned heart=0;heart<2;heart++)for(unsigned y=0;y<7;y++)for(unsigned x=0;x<8;x++)if(rows[y]&(1u<<x))
+                pixels[(3+heart*9+y)*24+2+heart*10+x]=heart?0xffffcf57:0xfff3a8b6;
+            image=(lv_image_dsc_t){.header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_ARGB8888,.w=24,.h=24,.stride=96},.data_size=sizeof pixels,.data=(const uint8_t*)pixels};ready=true;
+        }
+        return &image;
+    }
     if(kind<6)return pixel_icon(kind);
     static lv_image_dsc_t images[12];
     static bool ready;

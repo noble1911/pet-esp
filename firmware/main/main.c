@@ -11,6 +11,7 @@
 #include "audio.h"
 #include "power.h"
 #include "voice.h"
+#include "multiplayer.h"
 
 static const char *TAG = "pet";
 
@@ -35,6 +36,7 @@ void app_main(void)
     power_init();
     audio_init();
     voice_init();
+    multiplayer_init();
     ui_init();
     radio_init();
 
