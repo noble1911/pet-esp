@@ -7,13 +7,13 @@ static void u32(FILE *f,unsigned n) {for(int i=0;i<4;i++)fputc((n>>(8*i))&255,f)
 static void u16(FILE *f,unsigned n) {fputc(n&255,f);fputc((n>>8)&255,f);}
 static unsigned write_sound(sound_synth_t *s,const char *name)
 {
-    static int16_t pcm[SOUND_RATE*8];unsigned used=0;int peak=0;
+    static int16_t pcm[SOUND_RATE*90];unsigned used=0;int peak=0;
     while(sound_active(s)) {
         assert(used+320<=sizeof pcm/sizeof pcm[0]);
         sound_render(s,pcm+used,320);used+=320;
     }
     for(unsigned i=0;i<used;i++) {int a=pcm[i]<0?-pcm[i]:pcm[i];if(a>peak)peak=a;}
-    assert(peak>100 && peak<4000);assert(pcm[0]==0 && pcm[used-1]==0);
+    assert(peak>100 && peak<8000);assert(pcm[0]==0 && pcm[used-1]==0);
     int16_t quiet[640];memset(quiet,1,sizeof quiet);sound_render(s,quiet,640);
     for(unsigned i=0;i<640;i++)assert(!quiet[i]);
     char path[256];snprintf(path,sizeof path,"%s.wav",name);FILE *f=fopen(path,"wb");assert(f);
@@ -29,11 +29,18 @@ int main(void)
     for(unsigned i=0;i<SFX_COUNT;i++){sound_start_effect(&s,(sfx_id_t)i);hashes[i]=write_sound(&s,names[i]);}
     // Every current interaction has a unique waveform, not a pitch-only alias.
     for(unsigned i=SFX_APPLE;i<SFX_COUNT;i++)for(unsigned j=i+1;j<SFX_COUNT;j++)assert(hashes[i]!=hashes[j]);
-    for(unsigned i=0;i<3;i++){assert(sound_start_tune(&s,i));char n[24];snprintf(n,sizeof n,"tune-%u",i);write_sound(&s,n);}
-    assert(!sound_start_tune(&s,3) && !sound_active(&s));
+    for(unsigned i=0;i<audio_tune_count();i++){assert(sound_start_tune(&s,i));char n[24];snprintf(n,sizeof n,"tune-%u",i);unsigned duration=s.song->duration_ms;write_sound(&s,n);
+        assert(s.next_note==s.song->count);assert(s.music_sample==duration*(SOUND_RATE/1000));
+        assert(duration>10000 && duration<90000);
+    }
+    assert(!sound_start_tune(&s,audio_tune_count()) && !sound_active(&s));
     sound_start_effect(&s,SFX_COUNT);assert(!sound_active(&s));
     // Chunk boundaries do not change sample timing or the generated pattern.
     int16_t a[2000],b[2000];sound_start_effect(&s,SFX_BOUNCE);sound_render(&s,a,2000);
     sound_start_effect(&s,SFX_BOUNCE);sound_render(&s,b,137);sound_render(&s,b+137,1863);assert(!memcmp(a,b,sizeof a));
+    static int16_t music_a[50000],music_b[50000];
+    assert(sound_start_tune(&s,1));sound_render(&s,music_a,50000);
+    assert(sound_start_tune(&s,1));sound_render(&s,music_b,17777);sound_render(&s,music_b+17777,32223);
+    assert(!memcmp(music_a,music_b,sizeof music_a));
     puts("PASS: distinct effects, bounded peaks/durations, silent tails, deterministic chunk timing; WAV auditions written");
 }

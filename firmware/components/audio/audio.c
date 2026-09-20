@@ -99,7 +99,7 @@ void audio_play(sfx_id_t fx)
 }
 bool audio_play_tune(unsigned tune)
 {
-    if(!can_sound() || tune>=3)return false;
+    if(!can_sound() || tune>=audio_tune_count())return false;
     SoundCommand c={.tune=true,.id=tune,.generation=atomic_fetch_add(&s_sound_generation,1)+1};
     return xQueueOverwrite(s_fx,&c)==pdTRUE;
 }

@@ -28,7 +28,7 @@
 #define BALL_LAND_MS 160
 #define BALL_WIN_MS 650
 
-typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT, TREATS, REWARDS, POWER_OFF } View;
+typedef enum { HOME, FOOD, CATCH, BATH, SLEEP, PARTY, ALBUM, SETTINGS, CONNECTION, NAME, GAMES, HIDE, BALL, DECORATIONS, MUSIC, RESET, PROFILE, TRAIT, TREATS, REWARDS, POWER_OFF, PLAY_MENU, MULTIPLAYER } View;
 static View s_view;
 static lv_obj_t *s_root, *s_pet, *s_bars[4], *s_target, *s_counter;
 static lv_obj_t *s_dots[5], *s_hint, *s_sleep_bar;
@@ -59,7 +59,10 @@ static bool s_ball_pressed, s_ball_flying, s_ball_mirror;
 static int s_ball_from_x, s_ball_from_y, s_ball_to_x, s_ball_to_y;
 static uint32_t s_ball_finish_at;
 static lv_obj_t *s_ball_image, *s_ball_shadow, *s_ball_ring, *s_ball_trail[3];
+enum { MUSIC_COMPOSE=-2 };
 static int s_music_choice=-1;
+static lv_obj_t *s_music_list;
+static uint32_t s_music_started;
 static lv_obj_t *s_covers[3], *s_cover_art[3], *s_butterfly, *s_butterfly_image;
 static lv_obj_t *s_weather, *s_weather_icon, *s_rain[6];
 static int s_pet_x, s_pet_y;
@@ -341,7 +344,7 @@ static void volume_cb(lv_event_t *e)
 }
 static const char *activity(void)
 {
-    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits","special treats","choosing stickers or gifts","going to sleep"}[s_view];
+    return (const char*[]){"home","snack time","catch stars","bubble bath","nap","celebrating","stickers","options","connection check","naming","choosing a game","peekaboo","bouncy ball","room gifts","making music","grown-ups","my pet","my traits","special treats","choosing stickers or gifts","going to sleep","choosing games, music or multiplayer","multiplayer coming soon"}[s_view];
 }
 static void talk_begin(void)
 {
@@ -622,9 +625,47 @@ static void keepsake_frame(uint32_t now,voice_state_t vs)
         lv_image_set_scale_x(s_keepsakes[i],keepsake_actions[s_keepsake_choice].motion==FLUTTER && (now/180+i)%2?256:384);
     }
 }
+static void friends_icon(lv_obj_t *parent,int x,int y)
+{
+    for(int i=0;i<2;i++) {
+        int dx=x+i*27,dy=y+i*6;uint32_t color=i?PINK:GOLD;
+        lv_obj_t *head=shape(parent,dx+5,dy,14,14,INK,0);
+        lv_obj_set_style_radius(head,LV_RADIUS_CIRCLE,0);
+        head=shape(parent,dx+7,dy+2,10,10,color,0);
+        lv_obj_set_style_radius(head,LV_RADIUS_CIRCLE,0);
+        shape(parent,dx+3,dy+17,18,17,INK,0);
+        shape(parent,dx,dy+20,24,8,INK,0);
+        shape(parent,dx+5,dy+19,14,12,color,0);
+        shape(parent,dx+4,dy+31,6,9,INK,0);
+        shape(parent,dx+14,dy+31,6,9,INK,0);
+    }
+}
+static void make_play_menu(void)
+{
+    header("Let's play!");label(s_root,"What shall we do?",24,85,320,false);
+    const char *names[]={"Games","Music","Multiplayer"};
+    const char *hints[]={"Pick a little game","Tunes and little dances","Play with a friend"};
+    for(unsigned i=0;i<3;i++) {
+        lv_obj_t *b=button(s_root,24,111+i*106,320,94,(uint32_t[]){MINT,PINK,BLUE}[i],nav_cb,(int[]){GAMES,MUSIC,MULTIPLAYER}[i]);
+        if(i==2)friends_icon(b,19,23);
+        else art(b,i==0?pixel_icon(1):pixel_collectible(14),20,23,512);
+        label(b,names[i],88,20,218,true);label(b,hints[i],82,55,228,false);
+    }
+}
+static void make_multiplayer(void)
+{
+    header_to("Multiplayer",PLAY_MENU);
+    lv_obj_t *picture=shape(s_root,124,117,120,88,BLUE,18);
+    friends_icon(picture,35,22);
+    label(s_root,"Playdates are coming!",24,239,320,true);
+    label(s_root,"Play together with another pet.",24,285,320,false);
+    label(s_root,"Not available yet.",24,320,320,false);
+    lv_obj_t *back=button(s_root,74,377,220,54,MINT,nav_cb,PLAY_MENU);
+    label(back,"Back to Play",0,18,220,false);
+}
 static void make_games(void)
 {
-    header("Let's play!");label(s_root,"A little game, a happy pet",24,85,320,false);
+    header_to("Games",PLAY_MENU);label(s_root,"A little game, a happy pet",24,85,320,false);
     const char *names[]={"Stars","Peekaboo","Bouncy ball"};
     const char *hints[]={"Catch 5 twinkly stars","Find me 3 times","Give the ball 5 bounces"};
     for(int i=0;i<3;i++) {
@@ -632,36 +673,40 @@ static void make_games(void)
         art(b,i==1?pixel_decoration(0):pixel_icon(i==0?4:1),12,13,i==1?320:512);
         label(b,names[i],77,16,222,true);label(b,hints[i],72,47,232,false);
     }
-    lv_obj_t *music=button(s_root,29,398,310,44,PINK,nav_cb,MUSIC);
-    label(music,"Music " LV_SYMBOL_AUDIO,0,14,310,false);
+
 }
 static void music_cb(lv_event_t *e)
 {
     int choice=(int)(intptr_t)lv_event_get_user_data(e);
     if(choice==-1) {audio_stop_tune();voice_cancel();s_music_choice=-1;lv_label_set_text(s_hint,"All quiet. Pick a little tune!");return;}
     if(s_muted || audio_get_volume()==0) {lv_label_set_text(s_hint,"Turn sound on in Options first");return;}
-    if(choice==3) {
+    if(choice==MUSIC_COMPOSE) {
         audio_stop_tune();
-        if(voice_make_tune(pet_state_get(),activity())) {s_music_choice=3;lv_label_set_text(s_hint,"Making a tune... Stop cancels");}
-        else lv_label_set_text(s_hint,"Voice busy or offline. Try a tune below!");
+        if(voice_make_tune(pet_state_get(),activity())) {s_music_choice=MUSIC_COMPOSE;lv_label_set_text(s_hint,"Making a tune... Stop cancels");}
+        else lv_label_set_text(s_hint,"Voice busy or offline. Pick a song!");
     } else if(voice_get_state()==VOICE_THINKING || voice_get_state()==VOICE_LISTENING) {
         lv_label_set_text(s_hint,"Making a tune... Stop cancels");
     } else if(audio_play_tune((unsigned)choice)) {
-        s_music_choice=choice;lv_label_set_text(s_hint,(const char*[]){"Twinkly meadow","Bouncy dance","Sleepy leaves"}[choice]);
+        s_music_choice=choice;s_music_started=lv_tick_get();lv_label_set_text_fmt(s_hint,"Playing: %s",audio_tune_name((unsigned)choice));
     } else lv_label_set_text(s_hint,"Let me finish talking first");
 }
 static void make_music(void)
 {
-    header("Little tunes");s_music_choice=-1;
-    s_hint=label(s_root,"Pick a tune. Have a little wiggle!",24,89,320,false);
-    const char *titles[]={"Twinkly meadow","Bouncy dance","Sleepy leaves"};
-    for(int i=0;i<3;i++) {
-        lv_obj_t *b=button(s_root,29,128+i*57,310,46,(uint32_t[]){0xffecd1,MINT,BLUE}[i],music_cb,i);
-        art(b,pixel_collectible((unsigned[]){4,14,2}[i]),9,10,256);label(b,titles[i],43,15,254,false);
+    header_to("Little tunes",PLAY_MENU);s_music_choice=-1;
+    s_hint=label(s_root,"Swipe up to find more songs",24,89,320,false);
+    s_music_list=shape(s_root,24,120,320,204,CREAM,0);
+    lv_obj_add_flag(s_music_list,LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(s_music_list,LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(s_music_list,LV_SCROLLBAR_MODE_ON);
+    lv_obj_set_style_bg_color(s_music_list,lv_color_hex(INK),LV_PART_SCROLLBAR);
+    lv_obj_set_style_width(s_music_list,4,LV_PART_SCROLLBAR);
+    for(unsigned i=0;i<audio_tune_count();i++) {
+        lv_obj_t *b=button(s_music_list,2,2+(int)i*56,307,50,(uint32_t[]){0xffecd1,MINT,BLUE}[i%3],music_cb,(int)i);
+        art(b,pixel_collectible(14),8,12,256);label(b,audio_tune_name(i),38,17,262,false);
     }
     char request[64];snprintf(request,sizeof request,"%s, make me a tune!",pet_state_get()->name);
-    lv_obj_t *compose=button(s_root,29,313,310,48,PINK,music_cb,3);label(compose,request,0,16,310,false);
-    lv_obj_t *stop=button(s_root,89,379,190,44,CREAM,music_cb,-1);label(stop,"Stop music " LV_SYMBOL_STOP,0,14,190,false);
+    lv_obj_t *compose=button(s_root,29,339,310,48,PINK,music_cb,MUSIC_COMPOSE);label(compose,request,0,16,310,false);
+    lv_obj_t *stop=button(s_root,89,397,190,44,CREAM,music_cb,-1);label(stop,"Stop music " LV_SYMBOL_STOP,0,14,190,false);
 }
 static void hide_place(void)
 {
@@ -684,7 +729,7 @@ static void hide_cb(lv_event_t *e)
 }
 static void make_hide(void)
 {
-    room(false);header("Peekaboo");
+    room(false);header_to("Peekaboo",GAMES);
     for(int i=0;i<3;i++)s_dots[i]=shape(s_root,147+i*28,94,18,18,0xe2e7df,0);
     make_pet(40,215);lv_obj_set_size(s_pet,96,105);lv_image_set_scale(s_pet_image,320);
     lv_obj_remove_flag(s_pet,LV_OBJ_FLAG_CLICKABLE);
@@ -778,7 +823,7 @@ static void ball_frame(uint32_t now)
 }
 static void make_ball(void)
 {
-    room(false);header("Bouncy ball");progress();
+    room(false);header_to("Bouncy ball",GAMES);progress();
     for(unsigned i=0;i<5;i++) {
         lv_obj_set_style_radius(s_dots[i],LV_RADIUS_CIRCLE,0);
         lv_obj_set_style_border_width(s_dots[i],2,0);lv_obj_set_style_border_color(s_dots[i],lv_color_hex(INK),0);
@@ -869,7 +914,7 @@ static void make_home(void)
 {
     meadow();
     for(int i=0;i<4;i++) {
-        lv_obj_t *slot=button(s_root,24+i*82,12,74,38,CREAM,nav_cb,(int[]){FOOD,GAMES,SLEEP,BATH}[i]);
+        lv_obj_t *slot=button(s_root,24+i*82,12,74,38,CREAM,nav_cb,(int[]){FOOD,PLAY_MENU,SLEEP,BATH}[i]);
         lv_obj_set_style_border_width(slot,0,0);
         lv_obj_t *glyph=lv_image_create(slot);
         lv_image_set_src(glyph,pixel_icon(i==1?6:(unsigned)i));
@@ -905,7 +950,7 @@ static void make_home(void)
     lv_obj_t *settings=button(s_root,294,250,50,48,CREAM,nav_cb,SETTINGS);
     label(settings,LV_SYMBOL_SETTINGS,0,11,50,true);
     const char *names[]={"Food","Play","Sleep","Bath"};
-    int views[]={FOOD,GAMES,SLEEP,BATH};
+    int views[]={FOOD,PLAY_MENU,SLEEP,BATH};
     for(int i=0;i<4;i++) {
         lv_obj_t *b=button(s_root,24+i*82,368,74,68,(uint32_t[]){0xff95b0,0x93deaf,0xc5a1ed,0x85d6f3}[i],nav_cb,views[i]);
         // Crisp inset lighting gives the little toy buttons depth.
@@ -918,7 +963,7 @@ static void make_home(void)
 }
 static void show(View view)
 {
-    if(s_view==MUSIC && view!=MUSIC) {audio_stop_tune();if(s_music_choice==3)voice_cancel();}
+    if(s_view==MUSIC && view!=MUSIC) {audio_stop_tune();if(s_music_choice==MUSIC_COMPOSE)voice_cancel();}
     if(s_talking && !s_boot_down)talk_end();
     s_mic=NULL;s_voice_status=NULL;s_caption_label=NULL;s_connection=NULL;s_name_input=NULL;s_name_error=NULL;
     // Single owner: no screen-specific timers or callbacks survive the root.
@@ -946,6 +991,8 @@ static void show(View view)
     } else if(view==PROFILE) {make_profile();
     } else if(view==TRAIT) {make_trait();
     } else if(view==MUSIC) {make_music();
+    } else if(view==PLAY_MENU) {make_play_menu();
+    } else if(view==MULTIPLAYER) {make_multiplayer();
     } else if(view==GAMES) {make_games();
     } else if(view==HIDE) {make_hide();
     } else if(view==BALL) {make_ball();
@@ -963,7 +1010,7 @@ static void show(View view)
         char text[64];snprintf(text,sizeof text,"Special treats  %u / %u",unlocked,PET_SPECIAL_FOOD_COUNT);
         lv_obj_t *treats=button(s_root,29,405,310,38,GOLD,treats_cb,0);label(treats,text,0,10,310,false);
     } else if(view==CATCH) {
-        room(false); header("Catch the stars"); progress(); make_pet(82,134);
+        room(false); header_to("Catch the stars",GAMES); progress(); make_pet(82,134);
         lv_obj_remove_flag(s_pet,LV_OBJ_FLAG_CLICKABLE);
         s_hint=label(s_root,"Tap each golden star",32,405,304,false);
         s_target=button(s_root,40,150,96,96,0xffedb9,catch_cb,0);
@@ -1187,10 +1234,13 @@ static void frame(lv_timer_t *t)
     }
     if(s_view==MUSIC) {
         if(vs==VOICE_LISTENING)lv_label_set_text(s_hint,"I'm listening... Let go to reply");
-        else if(vs==VOICE_THINKING)lv_label_set_text(s_hint,s_music_choice==3?"Making a tune... Stop cancels":"One little moment... Stop cancels");
-        else if(audio_voice_playing())lv_label_set_text(s_hint,s_music_choice==3?"A little song, just for you!":"Chatting with you");
-        else if(s_music_choice==3 && (vs==VOICE_ERROR || vs==VOICE_OFFLINE))lv_label_set_text(s_hint,"Couldn't make a tune. Try the ones below!");
-        else if(s_music_choice==3 && vs==VOICE_READY)lv_label_set_text(s_hint,"Pick another tune whenever you like");
+        else if(vs==VOICE_THINKING)lv_label_set_text(s_hint,s_music_choice==MUSIC_COMPOSE?"Making a tune... Stop cancels":"One little moment... Stop cancels");
+        else if(audio_voice_playing())lv_label_set_text(s_hint,s_music_choice==MUSIC_COMPOSE?"A little song, just for you!":"Chatting with you");
+        else if(s_music_choice==MUSIC_COMPOSE && (vs==VOICE_ERROR || vs==VOICE_OFFLINE))lv_label_set_text(s_hint,"Couldn't make a tune. Pick a song!");
+        else if(s_music_choice==MUSIC_COMPOSE && vs==VOICE_READY)lv_label_set_text(s_hint,"Pick another tune whenever you like");
+        else if(s_music_choice>=0 && !audio_tune_playing() && lv_tick_get()-s_music_started>500) {
+            s_music_choice=-1;lv_label_set_text(s_hint,"Pick another song whenever you like");
+        }
     }
     if(s_connection && now-s_connection_tick>=500) { char text[256];voice_status(text,sizeof(text));lv_label_set_text(s_connection,text);s_connection_tick=now; }
     if(now-s_last_tick>=10000) { pet_state_tick((uint32_t)time(NULL)); s_last_tick=now; refresh(); }

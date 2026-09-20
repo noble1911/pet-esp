@@ -27,7 +27,7 @@ static sfx_id_t test_sfx;
 void audio_play(sfx_id_t f) {test_sfx=f;}
 static bool test_tune;
 static unsigned test_tune_choice, test_compositions;
-bool audio_play_tune(unsigned n) {test_tune=n<3;test_tune_choice=n;return test_tune;}
+bool audio_play_tune(unsigned n) {test_tune=n<audio_tune_count();test_tune_choice=n;return test_tune;}
 void audio_stop_tune(void) {test_tune=false;}
 bool audio_tune_playing(void) {return test_tune;}
 bool voice_make_tune(const Pet *p,const char *a) {(void)p;(void)a;test_compositions++;return true;}
@@ -121,7 +121,7 @@ int main(void)
     assert(lv_obj_has_flag(s_pet_heart, LV_OBJ_FLAG_HIDDEN));
     tap(60,385);assert(s_view==FOOD);shot("food");
     tap(73,350);tap(73,350);advance(FOOD_DURATION_MS+300);assert(s_view==PARTY);assert(pet_state_get()->evolution_progress==1);shot("party");
-    tap(180,395);assert(s_view==HOME);tap(140,385);assert(s_view==GAMES);shot("games");tap(180,158);assert(s_view==CATCH);shot("play");
+    tap(180,395);assert(s_view==HOME);tap(140,385);assert(s_view==PLAY_MENU);shot("play-menu");tap(180,154);assert(s_view==GAMES);shot("games");tap(180,158);assert(s_view==CATCH);shot("play");
     for(int i=0;i<5;i++){lv_obj_update_layout(s_target);int x=lv_obj_get_x(s_target)+48,y=lv_obj_get_y(s_target)+48;tap(x,y);}
     assert(s_view==PARTY);assert(pet_state_get()->evolution_progress==2);
     show(BATH);shot("bath");tap(60,173);tap(178,159);tap(298,174);tap(70,260);tap(294,264);
@@ -262,7 +262,7 @@ int main(void)
     assert(pet_state_get()->evolution_progress==play_before+1);
     advance(3000);assert(pet_state_get()->evolution_progress==play_before+1);
     show(HIDE);tap(76+108*(int)s_hiding,275);tap(48,46);advance(1500);
-    assert(s_view==HOME && pet_state_get()->evolution_progress==play_before+1);
+    assert(s_view==GAMES && pet_state_get()->evolution_progress==play_before+1);
 
     // Each hit launches a new arc. Landing waits for the child, while flight
     // cannot score again and the fifth bounce finishes before its care reward.
@@ -294,7 +294,7 @@ int main(void)
     assert(pet_state_get()->evolution_progress==play_before+1);shot("bouncy-ball-celebration");
     advance(2500);assert(pet_state_get()->evolution_progress==play_before+1);
     show(BALL);tap(lv_obj_get_x(s_target)+48,lv_obj_get_y(s_target)+48);tap(4,4);advance(3000);
-    assert(s_view==HOME && pet_state_get()->evolution_progress==play_before+1);
+    assert(s_view==GAMES && pet_state_get()->evolution_progress==play_before+1);
     // Both mirrored routes stay below navigation and above the status footer.
     for(unsigned mirror=0;mirror<2;mirror++) {
         show(BALL);s_ball_mirror=mirror;
@@ -308,7 +308,7 @@ int main(void)
         }
         // Back out during the final celebration pause: no delayed reward.
         assert(s_ball_finish_at);tap(4,4);advance(2000);
-        assert(s_view==HOME && pet_state_get()->evolution_progress==play_before+1);
+        assert(s_view==GAMES && pet_state_get()->evolution_progress==play_before+1);
     }
     if(getenv("PET_CAPTURE_BALL")) {
         show(BALL);s_ball_mirror=false;
@@ -430,17 +430,33 @@ int main(void)
 
     // Music is available from Play; offline choices and compose never earn care
     // stars, Stop works, leaving stops local playback, muted compose is blocked.
-    test_voice=VOICE_READY;s_muted=false;audio_set_volume(100);show(GAMES);tap(180,421);assert(s_view==MUSIC);shot("music");
+    test_voice=VOICE_READY;s_muted=false;audio_set_volume(100);show(PLAY_MENU);tap(180,260);assert(s_view==MUSIC);shot("music");
     unsigned music_before=pet_state_get()->evolution_progress;
-    for(unsigned i=0;i<3;i++){tap(180,150+57*(int)i);assert(test_tune && test_tune_choice==i);}
+    assert(audio_tune_count()==9);
+    tx=180;ty=295;pressed=true;advance(60);
+    for(int y=295;y>=155;y-=20){ty=y;advance(40);}
+    pressed=false;advance(400);
+    assert(lv_obj_get_scroll_y(s_music_list)>60 && !test_tune);
+    lv_obj_scroll_to_y(s_music_list,0,LV_ANIM_OFF);advance(30);
+    for(unsigned i=0;i<audio_tune_count();i++) {
+        lv_obj_scroll_to_y(s_music_list,(int)i*56,LV_ANIM_OFF);advance(30);
+        int y=lv_obj_get_y(lv_obj_get_child(s_music_list,i))+120-lv_obj_get_scroll_y(s_music_list)+25;
+        tap(180,y);assert(test_tune && test_tune_choice==i);
+    }
+    shot("music-last-songs");
+    lv_obj_scroll_to_y(s_music_list,0,LV_ANIM_OFF);advance(30);
     test_boot=true;advance(200);assert(!test_tune && strstr(lv_label_get_text(s_hint),"listening"));
     test_boot=false;advance(200);test_voice=VOICE_READY;
-    tap(180,400);assert(!test_tune);unsigned composed=test_compositions;
-    tap(180,336);assert(test_compositions==composed+1);
+    tap(180,418);assert(!test_tune);unsigned composed=test_compositions;
+    tap(180,363);assert(test_compositions==composed+1);
     test_voice=VOICE_THINKING;tap(180,150);assert(!test_tune && strstr(lv_label_get_text(s_hint),"Stop"));test_voice=VOICE_READY;
-    s_muted=true;tap(180,336);assert(test_compositions==composed+1);s_muted=false;
-    tap(180,150);assert(test_tune);tap(48,46);assert(s_view==HOME && !test_tune);
+    s_muted=true;tap(180,363);assert(test_compositions==composed+1);s_muted=false;
+    tap(180,150);assert(test_tune);tap(48,46);assert(s_view==PLAY_MENU && !test_tune);
     assert(pet_state_get()->evolution_progress==music_before);
+    tap(180,365);assert(s_view==MULTIPLAYER);shot("multiplayer-placeholder");
+    tap(180,401);assert(s_view==PLAY_MENU);tap(180,154);assert(s_view==GAMES);
+    tap(4,4);assert(s_view==PLAY_MENU);tap(4,4);assert(s_view==HOME);
+    tap(140,30);assert(s_view==PLAY_MENU);tap(4,4);assert(s_view==HOME);
     show(FOOD);tap(180,350);assert(test_sfx==SFX_TOAST);tap(48,46);
     show(BALL);tap(lv_obj_get_x(s_target)+48,lv_obj_get_y(s_target)+48);assert(test_sfx==SFX_BOUNCE);
     show(HIDE);tap(76+108*(int)s_hiding,275);assert(test_sfx==SFX_FOUND);show(HOME);
@@ -569,8 +585,8 @@ int main(void)
     saved = snapshot; pet_state_init();
     // Back works across the whole corner, not only the old 48px tile.
     const int back_points[][2]={{2,2},{85,2},{2,73},{85,73},{44,38}};
-    const View back_views[]={FOOD,GAMES,SETTINGS,ALBUM,DECORATIONS,TREATS,PROFILE,TRAIT,RESET};
-    const View back_dest[]={HOME,HOME,HOME,REWARDS,REWARDS,FOOD,SETTINGS,PROFILE,SETTINGS};
+    const View back_views[]={FOOD,GAMES,SETTINGS,ALBUM,DECORATIONS,TREATS,PROFILE,TRAIT,RESET,PLAY_MENU,MUSIC,MULTIPLAYER,CATCH,HIDE,BALL};
+    const View back_dest[]={HOME,PLAY_MENU,HOME,REWARDS,REWARDS,FOOD,SETTINGS,PROFILE,SETTINGS,HOME,PLAY_MENU,PLAY_MENU,GAMES,GAMES,GAMES};
     for(unsigned v=0;v<sizeof back_views/sizeof back_views[0];v++) {
         for(unsigned point=0;point<sizeof back_points/sizeof back_points[0];point++) {
             show(back_views[v]);tap(back_points[point][0],back_points[point][1]);assert(s_view==back_dest[v]);

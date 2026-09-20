@@ -46,6 +46,8 @@ static void speech_after_first(void) {
 }
 int main(void) {
     reset();audio_play(SFX_STAR);run(2);assert(audible(0));
+    reset();assert(!audio_play_tune(audio_tune_count()));
+    reset();assert(audio_play_tune(audio_tune_count()-1));run(3);assert(audible(0));
     reset();assert(audio_play_tune(0));after_write=stop_after_first;run(3);assert(audible(0)&&!audible(1)&&!audible(2));assert(!audio_tune_playing());
     reset();assert(audio_play_tune(1));after_write=capture_after_first;run(4);assert(audible(0)&&!audible(1)&&!audible(2)&&!audible(3));
     reset();assert(audio_play_tune(2));after_write=mute_after_first;run(4);assert(audible(0)&&!audible(1)&&!audible(2)&&!audible(3));

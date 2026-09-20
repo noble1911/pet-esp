@@ -36,20 +36,78 @@ void sound_start_effect(sound_synth_t *s,sfx_id_t fx)
     default: memset(s,0,sizeof *s);break;
     }
 }
+#include "music_data.inc"
+static int16_t music_wave[256];
+static uint32_t music_steps[128];
+static bool music_ready;
+unsigned audio_tune_count(void) {return sizeof music_songs/sizeof music_songs[0];}
+const char *audio_tune_name(unsigned tune) {return tune<audio_tune_count()?music_songs[tune].name:"";}
 bool sound_start_tune(sound_synth_t *s,unsigned tune)
 {
-    switch(tune) {
-    case 0: SEQUENCE(SOUND_BELL,{72,220},{76,220},{79,440},{76,220},{74,220},{72,440},{67,220},{72,220},{76,440},{74,220},{72,660});break;
-    case 1: SEQUENCE(SOUND_PLUCK,{60,160},{0,80},{67,160},{72,320},{67,160},{64,160},{67,320},{0,160},{65,160},{69,160},{72,320},{67,160},{64,160},{60,480});break;
-    case 2: SEQUENCE(SOUND_FLUTE,{72,400},{67,400},{69,800},{67,400},{64,400},{65,800},{64,400},{60,800});break;
-    default: memset(s,0,sizeof *s);return false;
+    memset(s,0,sizeof *s);
+    if(tune>=audio_tune_count())return false;
+    if(!music_ready) {
+        for(unsigned i=0;i<256;i++)music_wave[i]=(int16_t)(sinf(2*PI*i/256)*32767);
+        for(unsigned i=0;i<128;i++)music_steps[i]=(uint32_t)(440.0*pow(2.0,((int)i-69)/12.0)*4294967296.0/SOUND_RATE);
+        music_ready=true;
     }
+    s->song=&music_songs[tune];s->noise=0x12345678;
     return true;
 }
-bool sound_active(const sound_synth_t *s) {return s->index<s->count;}
+bool sound_active(const sound_synth_t *s)
+{
+    return s->song?s->music_sample<s->song->duration_ms*(SOUND_RATE/1000):s->index<s->count;
+}
+static void music_render(sound_synth_t *s,int16_t *out,size_t samples)
+{
+    for(size_t i=0;i<samples && sound_active(s);i++,s->music_sample++) {
+        while(s->next_note<s->song->count && s->song->notes[s->next_note].start_ms*(SOUND_RATE/1000)<=s->music_sample) {
+            const music_note_t *n=&s->song->notes[s->next_note++];
+            // The importer checks maximum overlap against this fixed pool.
+            for(unsigned j=0;j<SOUND_MUSIC_VOICES;j++)if(s->voices[j].age>=s->voices[j].length) {
+                music_voice_t *v=&s->voices[j];memset(v,0,sizeof *v);
+                v->length=n->duration_ms*(SOUND_RATE/1000);v->velocity=n->velocity;v->midi=n->midi;
+                v->step=music_steps[n->midi];
+                v->timbre=n->program>=126?4:n->program>=32&&n->program<40?3:
+                    n->program>=40&&n->program<112?2:n->program>=8&&n->program<16?1:0;
+                if(v->timbre==4) {
+                    // Compact kick/snare/hat sounds, without long sustained drum tails.
+                    unsigned ms=n->midi>=42?65:150;
+                    if(v->length>ms*(SOUND_RATE/1000))v->length=ms*(SOUND_RATE/1000);
+                    v->step=music_steps[n->midi==35||n->midi==36?36:60];
+                }
+                break;
+            }
+        }
+        int32_t mix=0;
+        for(unsigned j=0;j<SOUND_MUSIC_VOICES;j++) {
+            music_voice_t *v=&s->voices[j];if(v->age>=v->length)continue;
+            int32_t wave=music_wave[v->phase>>24];
+            if(v->timbre==0)wave=(wave*3+music_wave[(uint32_t)(v->phase*2)>>24])/4;
+            else if(v->timbre==1)wave=(wave*4+music_wave[(uint32_t)(v->phase*3)>>24])/5;
+            else if(v->timbre==4 && v->midi!=35 && v->midi!=36) {
+                s->noise^=s->noise<<13;s->noise^=s->noise>>17;s->noise^=s->noise<<5;
+                wave=(int32_t)(s->noise&65535)-32768;
+            }
+            unsigned attack=v->age<80?v->age*1024/80:1024;
+            unsigned left=v->length-1-v->age;
+            unsigned release=left<288?left*1024/288:1024;
+            unsigned decay=1024;
+            if(v->timbre<2)decay=32768000u/(32000+v->age*(v->timbre==1?3:8));
+            else if(v->timbre==4)decay=left*1024/v->length;
+            int32_t level=(int32_t)(attack*release/1024)*decay/1024;
+            mix+=((wave*level/1024)*v->velocity/127)*1000/32768;
+            v->phase+=v->step;v->age++;
+        }
+        // Gentle bounded compression prevents dense MIDI chords from clipping.
+        int32_t magnitude=mix<0?-mix:mix;
+        out[i]=(int16_t)(mix*8000/(8000+magnitude));
+    }
+}
 void sound_render(sound_synth_t *s,int16_t *out,size_t samples)
 {
     memset(out,0,samples*sizeof *out);
+    if(s->song){music_render(s,out,samples);return;}
     for(size_t i=0;i<samples && sound_active(s);i++) {
         sound_note_t note=s->notes[s->index];unsigned length=note.ms*(SOUND_RATE/1000);
         float time=s->sample/(float)SOUND_RATE,u=s->sample/(float)length;

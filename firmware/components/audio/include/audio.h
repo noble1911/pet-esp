@@ -1,4 +1,4 @@
-// One speaker owner for distinct synthesized effects, short tunes and speech.
+// One speaker owner for distinct synthesized effects, MIDI songs and speech.
 
 #pragma once
 #include <stdbool.h>
@@ -26,7 +26,9 @@ void audio_init(void);
 // Non-blocking, latest cue wins; mic and speech take priority.
 void audio_play(sfx_id_t sfx);
 void audio_set_muted(bool muted);
-bool audio_play_tune(unsigned tune); // three original offline patterns, 0..2
+unsigned audio_tune_count(void);
+const char *audio_tune_name(unsigned tune);
+bool audio_play_tune(unsigned tune); // Offline MIDI library; indices below audio_tune_count().
 void audio_stop_tune(void);
 bool audio_tune_playing(void);
 // Session volume, 0 (silent) to 100. Mute preserves the selected level.
