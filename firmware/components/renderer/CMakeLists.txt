@@ -6,7 +6,7 @@ idf_component_register(
     SRCS "renderer.c"
     INCLUDE_DIRS "include"
     REQUIRES pet_state waveshare__esp32_s3_touch_amoled_1_8 lvgl__lvgl
-             joltwallet__littlefs
+             joltwallet__littlefs espressif__esp_lcd_touch espressif__esp_lvgl_port
 )
 
 # Suppress -Wformat-truncation: every snprintf in renderer.c builds paths

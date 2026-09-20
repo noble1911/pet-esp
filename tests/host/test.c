@@ -87,7 +87,7 @@ int audio_mic_level(void) {return 800;}
 static int test_volume=100;
 void audio_set_volume(int v) { test_volume=v; }
 int audio_get_volume(void) { return test_volume; }
-static uint32_t pixels[368*448],partial_pixels[368*40];
+static uint32_t pixels[368*448],partial_pixels[368*16];
 static bool partial_render;
 static int tx,ty; static bool pressed;
 static void read_touch(lv_indev_t *i,lv_indev_data_t *d) { (void)i; d->point.x=tx;d->point.y=ty;d->state=pressed?LV_INDEV_STATE_PRESSED:LV_INDEV_STATE_RELEASED; }
